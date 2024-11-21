@@ -41,6 +41,16 @@ app.get('/', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html')); // Serve the index.html from dist
 });
 
+// Add a route for /home
+app.get('/home', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html')); // Serve the same index.html
+});
+
+// Catch-all route for any other paths
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html')); // Serve the index.html for any other routes
+});
+
 // Handle socket connections
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
