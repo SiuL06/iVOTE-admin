@@ -1,5 +1,15 @@
 <template>
   <div class="container">
+    <header class="navbar">
+      <h1></h1>
+      <nav>
+        <ul>
+          <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
+          <li><RouterLink to="/register" class="btn">Register</RouterLink></li>
+        </ul>
+      </nav>
+    </header>
+
     <img src="@/assets/ivotelogo.png" alt="Logo" class="logo" />
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
     <h2 class="nominees-label">Nominees:</h2>
@@ -34,6 +44,8 @@
 
 <script>
 import { io } from 'socket.io-client';
+import { db } from '@/firebase'; // Import the Firestore instance
+import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
 
 export default {
   name: 'HomePage',
@@ -45,13 +57,16 @@ export default {
       isSubmitting: false,
     };
   },
-  mounted() {
+  async mounted() {
     // Connect to backend running on port 3001
-    this.socket = io('http://localhost:3001'); // Updated to connect to port 3001
+    this.socket = io('http://localhost:3001');
 
     this.socket.on('connect', () => {
       console.log('Connected to backend server on port 3001');
     });
+
+    // Fetch nominees from Firestore
+    await this.fetchNomineesFromFirestore();
 
     // Listen for nominee updates from the backend
     this.socket.on('nomineeUpdate', (updatedNominees) => {
@@ -59,12 +74,25 @@ export default {
     });
   },
   methods: {
-    addNominee() {
+    async fetchNomineesFromFirestore() {
+      const nomineesCollection = collection(db, 'nominees'); // Adjust the collection name as needed
+      const nomineeSnapshot = await getDocs(nomineesCollection);
+      this.nominees = nomineeSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      this.nextId = this.nominees.length + 1; // Update nextId based on fetched data
+    },
+
+    async addNominee() {
       const name = prompt("Enter nominee's name:");
       if (name) {
         const nominee = { id: this.nextId.toString(), name, score: 0 };
         this.nominees.push(nominee);
         this.nextId++;
+
+        // Save nominee to Firestore
+        await setDoc(doc(db, 'nominees', nominee.id), nominee);
         this.socket.emit('addNominee', nominee); // Emit to backend
       }
     },
@@ -86,18 +114,26 @@ export default {
       }
     },
 
-    resetNomineeScore(nomineeId) {
+    async resetNomineeScore(nomineeId) {
       const nominee = this.nominees.find(n => n.id === nomineeId);
       if (nominee) {
         nominee.score = 0;
+
+        // Reset score in Firestore
+        const nomineeRef = doc(db, 'nominees', nominee.id);
+        await updateDoc(nomineeRef, { score: nominee.score });
         this.socket.emit('resetNomineeScore', nominee.id); // Emit to backend
       }
     },
 
-    adjustScore(nomineeId, change) {
+    async adjustScore(nomineeId, change) {
       const nominee = this.nominees.find(n => n.id === nomineeId);
       if (nominee) {
         nominee.score += change;
+
+        // Update score in Firestore
+        const nomineeRef = doc(db, 'nominees', nominee.id);
+        await updateDoc(nomineeRef, { score: nominee.score });
         this.socket.emit('adjustScore', nominee.id, change); // Emit to backend
       }
     },
@@ -121,10 +157,44 @@ export default {
 </script>
 
 <style scoped>
-/* Your CSS styles remain unchanged */
-</style>
 
-<style scoped>
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: rgba(0, 0, 0, 0.6);;
+  border-bottom: 2px solid #ddd;
+  font-family: agrandir;
+  width: 100%;
+}
+
+.navbar nav ul {
+  list-style: none;
+  display: flex;
+}
+
+.navbar nav ul li {
+  margin-right: 20px;
+  transition: 0.3s;
+}
+
+.navbar nav ul li:hover {
+  opacity: .3;
+}
+
+.btn {
+  background-color: none;
+  font-size: 20px;
+  color: white;
+  text-decoration: none;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  transition: 0.3s ease;
+  cursor: pointer;
+}
+
 .container {
   width: 100%;
   height: 100vh;
@@ -161,16 +231,6 @@ export default {
   align-items: center;
   gap: 20px;
   margin: 20px 0;
-}
-
-.btn {
-  padding: 10px 20px;
-  width: 140px;
-  height: 50px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  text-align: center;
 }
 
 .add-nominee {

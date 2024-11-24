@@ -1,5 +1,15 @@
 <template>
-  <div class="constraint-layout">
+  <div class="container">
+    <header class="navbar">
+      <h1></h1>
+      <nav>
+        <ul>
+          <li><RouterLink to="/register" class="btn">Register</RouterLink></li>
+          <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
+        </ul>
+      </nav>
+    </header>
+
     <img
       id="imageViewBackground"
       class="background-image"
@@ -7,39 +17,42 @@
       alt="Background"
     />
 
-    <div class="register-container">
-      <h2>Register to iVote!</h2>
-      <form @submit.prevent="submitForm">
-        <div class="input-group">
-          <input type="text" placeholder="First Name" v-model="firstName" required />
-        </div>
-        <div class="input-group">
-          <input type="text" placeholder="Last Name" v-model="lastName" required />
-        </div>
-        <div class="input-group">
-          <input type="email" placeholder="Email" v-model="email" required />
-        </div>
-        <div class="input-group">
-          <input type="password" placeholder="Password" v-model="password" required />
-        </div>
-        <div class="input-group">
-          <input type="date" v-model="birthdate" required />
-        </div>
-        <div class="input-group gender-group">
-          <label>Gender:</label>
-          <input type="radio" id="male" name="gender" value="male" v-model="gender" required />
-          <label for="male">Male</label>
-          <input type="radio" id="female" name="gender" value="female" v-model="gender" required />
-          <label for="female">Female</label>
-        </div>
-        <button type="button" class="btn-login" :disabled="isLoading" @click="submitForm">
-          <span v-if="isLoading">Registering...</span>
-          <span v-else>Register</span>
-        </button>
-        <div class="extra-links">
-          <a href="login" class="sign-up">Already have an account? <span>Sign in</span></a>
-        </div>
-      </form>
+    <!-- New wrapper for registration section -->
+    <div class="voting-section">
+      <div class="register-container">
+        <h2>Register to iVote!</h2>
+        <form @submit.prevent="submitForm">
+          <div class="input-group">
+            <input type="text" placeholder="First Name" v-model="firstName" required />
+          </div>
+          <div class="input-group">
+            <input type="text" placeholder="Last Name" v-model="lastName" required />
+          </div>
+          <div class="input-group">
+            <input type="email" placeholder="Email" v-model="email" required />
+          </div>
+          <div class="input-group">
+            <input type="password" placeholder="Password" v-model="password" required />
+          </div>
+          <div class="input-group">
+            <input type="date" v-model="birthdate" required />
+          </div>
+          <div class="input-group gender-group">
+            <label>Gender:</label>
+            <input type="radio" id="male" name="gender" value="male" v-model="gender" required />
+            <label for="male">Male</label>
+            <input type="radio" id="female" name="gender" value="female" v-model="gender" required />
+            <label for="female">Female</label>
+          </div>
+          <button type="button" class="btn-login" :disabled="isLoading" @click="submitForm">
+            <span v-if="isLoading">Registering...</span>
+            <span v-else>Register</span>
+          </button>
+          <div class="extra-links">
+            <a href="login" class="sign-up">Already have an account? <span>Sign in</span></a>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </template>
@@ -63,8 +76,7 @@ export default {
     };
   },
   methods: {
-    async submitForm(e) {
-      e.preventDefault(); // Prevent default form submission behavior
+    async submitForm() {
       this.isLoading = true; // Start loading
 
       try {
@@ -106,7 +118,7 @@ export default {
           case 'auth/email-already-in-use':
             alert('This email is already in use. Please use a different email.');
             break;
-          case 'auth/invalid-email':
+          case 'auth /invalid-email':
             alert('Invalid email format.');
             break;
           case 'auth/weak-password':
@@ -141,24 +153,49 @@ export default {
   src: url('@/assets/agrandir.otf');
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: none;
+  border-bottom: 2px solid #ddd;
+  font-family: agrandir;
   width: 100%;
-  height: 100%;
-  overflow: hidden; /* Prevent any scrollbars */
 }
 
-.constraint-layout {
-  position: fixed; /* Fix the layout to the screen */
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+.navbar nav ul {
+  list-style: none;
   display: flex;
-  justify-content: center; /* Center the registration form horizontally */
-  align-items: center; /* Center the registration form vertically */
-  background-color: #000;
+}
+
+.navbar nav ul li {
+  margin-right: 20px;
+  transition: 0.3s;
+}
+
+.navbar nav ul li:hover {
+  opacity: .3;
+}
+
+.btn {
+  background-color: none;
+  font-size: 20px;
+  color: white;
+  text-decoration: white;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  transition: 0.3s ease;
+  cursor: pointer;
+}
+
+.voting-section {
+  display: flex;
+  justify-content: center; /* Center the registration container */
+  align-items: center; /* Center vertically */
+  flex: 1; /* Take up remaining space below the navbar */
+  padding-top: 20px; /* Optional padding for spacing */
 }
 
 .background-image {
@@ -168,7 +205,7 @@ html, body {
   width: 100%;
   height: 100%;
   object-fit: cover; /* Ensure the image covers the full screen */
-  z-index: -1;
+  z-index: -1; /* Background behind everything */
 }
 
 .register-container {

@@ -3,11 +3,13 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { createApp } from 'vue';
 import Home from './components/home.vue';
 import Login from './components/Login.vue';
+import Register from './components/register.vue';
 
 // Define routes
 const routes = [
   { path: '/', component: Login },
   { path: '/home', component: Home },
+  { path: '/register', component: Register },
 ];
 
 // Create router
