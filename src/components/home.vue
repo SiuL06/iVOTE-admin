@@ -20,22 +20,18 @@
       <button class="btn submit-votes" @click="submitVotes" :disabled="nominees.length === 0 || isSubmitting">
         Submit Votes
       </button>
+      <button class="btn logout" @click="logout">Logout</button>
     </div>
 
     <div class="nominees-container">
       <div v-for="nominee in nominees" :key="nominee.id" class="card">
         <h3 class="nominee-title">{{ nominee.name }}</h3>
-        <div class="score">{{ nominee.score }}</div>
-
+        <p>Votes: <span>{{ nominee.score }}</span></p> <!-- Display nominee score -->
         <button class="btn rename" @click="renameNominee(nominee.id)">Rename</button>
-        <button class="btn reset" @click="resetNomineeScore(nominee.id)">Reset Score</button>
-
-        <div class="adjust-buttons">
-          <button class="btn minus" @click="adjustScore(nominee.id, -1)">-</button>
-          <button class="btn plus" @click="adjustScore(nominee.id, 1)">+</button>
-        </div>
       </div>
     </div>
+
+
 
     <p class="year">2024</p>
     <p class="footer">Group 7 (iVOTE)</p>
@@ -44,20 +40,20 @@
 
 <script>
 import { io } from 'socket.io-client';
-import { db } from '@/firebase'; // Import the Firestore instance
-import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/firebase'; // Adjust the path as necessary
+import { collection, onSnapshot, addDoc } from 'firebase/firestore'; // For Firestore
 
 export default {
   name: 'HomePage',
   data() {
     return {
-      nominees: [],
+      nominees: [], // Array to store nominees and their vote counts
       nextId: 1,
       socket: null,
       isSubmitting: false,
     };
   },
-  async mounted() {
+  mounted() {
     // Connect to backend running on port 3001
     this.socket = io('http://localhost:3001');
 
@@ -65,34 +61,21 @@ export default {
       console.log('Connected to backend server on port 3001');
     });
 
-    // Fetch nominees from Firestore
-    await this.fetchNomineesFromFirestore();
+    // Fetch nominees' votes from Firestore
+    this.fetchNominees();
 
     // Listen for nominee updates from the backend
     this.socket.on('nomineeUpdate', (updatedNominees) => {
-      this.nominees = updatedNominees;
+      this.updateNomineeData(updatedNominees); // Update nominees with the new data
     });
   },
   methods: {
-    async fetchNomineesFromFirestore() {
-      const nomineesCollection = collection(db, 'nominees'); // Adjust the collection name as needed
-      const nomineeSnapshot = await getDocs(nomineesCollection);
-      this.nominees = nomineeSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      this.nextId = this.nominees.length + 1; // Update nextId based on fetched data
-    },
-
-    async addNominee() {
+    addNominee() {
       const name = prompt("Enter nominee's name:");
       if (name) {
         const nominee = { id: this.nextId.toString(), name, score: 0 };
         this.nominees.push(nominee);
         this.nextId++;
-
-        // Save nominee to Firestore
-        await setDoc(doc(db, 'nominees', nominee.id), nominee);
         this.socket.emit('addNominee', nominee); // Emit to backend
       }
     },
@@ -100,7 +83,6 @@ export default {
     resetAndRemoveNominees() {
       this.nominees = [];
       this.nextId = 1;
-      // We don't need to emit the empty list to the backend here, as we reset locally
     },
 
     renameNominee(nomineeId) {
@@ -114,47 +96,78 @@ export default {
       }
     },
 
-    async resetNomineeScore(nomineeId) {
-      const nominee = this.nominees.find(n => n.id === nomineeId);
-      if (nominee) {
-        nominee.score = 0;
-
-        // Reset score in Firestore
-        const nomineeRef = doc(db, 'nominees', nominee.id);
-        await updateDoc(nomineeRef, { score: nominee.score });
-        this.socket.emit('resetNomineeScore', nominee.id); // Emit to backend
-      }
+    async fetchNominees() {
+      const votesCollection = collection(db, 'votes');
+      onSnapshot(votesCollection, (snapshot) => {
+        const voteCounts = {};
+        snapshot.forEach(doc => {
+          const vote = doc.data().vote;
+          if (voteCounts[vote]) {
+            voteCounts[vote]++;
+          } else {
+            voteCounts[vote] = 1;
+          }
+        });
+        this.updateNomineeScores(voteCounts);
+      });
     },
 
-    async adjustScore(nomineeId, change) {
-      const nominee = this.nominees.find(n => n.id === nomineeId);
-      if (nominee) {
-        nominee.score += change;
-
-        // Update score in Firestore
-        const nomineeRef = doc(db, 'nominees', nominee.id);
-        await updateDoc(nomineeRef, { score: nominee.score });
-        this.socket.emit('adjustScore', nominee.id, change); // Emit to backend
-      }
+    updateNomineeScores(voteCounts) {
+      this.nominees.forEach(nominee => {
+        nominee.score = voteCounts[nominee.name] || 0; // Update score based on vote counts
+      });
     },
 
     async submitVotes() {
       this.isSubmitting = true;
-      // Handle submitting votes to backend (e.g., to Firestore)
-      console.log('Votes submitted:', this.nominees);
-      this.isSubmitting = false;
 
-      // Emit a vote submission event to the backend if needed
-      // this.socket.emit('submitVotes', this.nominees);
+      // Prepare the data to be saved
+      const electionResults = this.nominees.map(nominee => ({
+        name: nominee.name,
+        score: nominee.score,
+        timestamp: new Date().toISOString() // Add a timestamp for when the votes were submitted
+      }));
+
+      // Save each nominee's result to Firestore
+      const resultsCollection = collection(db, 'electionResults'); // Reference to the results collection
+      try {
+        for (const result of electionResults) {
+          await addDoc(resultsCollection, result); // Save each result
+        }
+        console.log('Votes submitted:', electionResults);
+        alert('Votes submitted successfully!'); // Optional: Notify the user
+      } catch (error) {
+        console.error('Error submitting votes:', error);
+        alert('Error submitting votes. Please try again.'); // Optional: Notify the user
+      }
+
+      this.isSubmitting = false;
+    },
+
+    logout() {
+      localStorage.removeItem('authToken'); // Clear authentication state
+      this.$router.push('/'); // Redirect to login page
+    },
+
+    updateNomineeData(updatedNominees) {
+      this.nominees = updatedNominees.map(nominee => ({
+        ...nominee,
+        score: nominee.score || 0 // Ensure there's a score property
+      }));
     },
   },
   beforeUnmount() {
     if (this.socket) {
-      this.socket.disconnect();
+ this.socket.disconnect();
     }
   },
 };
 </script>
+
+<style scoped>
+/* Add your styles here */
+</style>
+
 
 <style scoped>
 
@@ -163,7 +176,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 10px 15px;
-  background-color: rgba(0, 0, 0, 0.6);;
+  background-color: rgba(0, 0, 0, 0.6);
   border-bottom: 2px solid #ddd;
   font-family: agrandir;
   width: 100%;
@@ -225,6 +238,12 @@ export default {
   text-align: center;
 }
 
+.scores-label {
+  margin-top: 20px;
+  font-size: 20px;
+  text-align: center;
+}
+
 .buttons-container {
   display: flex;
   justify-content: space-between;
@@ -258,7 +277,17 @@ export default {
   margin-top: 20px;
 }
 
-.card {
+.scores-container {
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 0 20px;
+  box-sizing: border-box;
+  margin-top: 20px;
+}
+
+.card, .score-card {
   background-color: #4a4a61;
   padding: 20px;
   border-radius: 10px;
