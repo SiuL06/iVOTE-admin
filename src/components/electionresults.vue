@@ -5,7 +5,7 @@
       <nav>
         <ul>
           <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
-          <li><RouterLink to="/electionresults" class="btn">ElectionResults</RouterLink></li>
+          <li><RouterLink to="/electionresults" class="btn">Election Results</RouterLink></li>
         </ul>
       </nav>
     </header>
@@ -15,26 +15,29 @@
 
     <h2 class="header results-title">Election Results</h2>
     <div class="results-container">
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th>Candidate</th>
-            <th>Total Votes</th>
-            <th>% by Department</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="candidate in results" :key="candidate.name">
-            <td>{{ candidate.name }}</td>
-            <td>{{ candidate.totalVotes }}</td>
-            <td>
-              <div v-for="(percent, department) in candidate.departmentPercentages" :key="department">
-                {{ department }}: {{ percent.toFixed(2) }}%
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-for="(candidates, position) in results" :key="position" class="position-container">
+        <h3 class="position-title">{{ position }}</h3>
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              <th>Total Votes</th>
+              <th>% by Department</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="candidate in candidates" :key="candidate.name">
+              <td>{{ candidate.name }}</td>
+              <td>{{ candidate.totalVotes }}</td>
+              <td>
+                <div v-for="(percent, department) in candidate.departmentPercentages" :key="department">
+                  {{ department }}: {{ percent.toFixed(2) }}%
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <p class="year">2024</p>
@@ -49,7 +52,7 @@ export default {
   name: "ElectionResults",
   data() {
     return {
-      results: [], // Stores the election results
+      results: {}, // Stores the election results grouped by positions
     };
   },
   async created() {
@@ -58,38 +61,73 @@ export default {
   methods: {
     async fetchResults() {
       const db = getFirestore();
-      const votesSnapshot = await getDocs(collection(db, "votes"));
-      const departments = {};
-      const candidates = {};
 
-      // Count votes for each candidate and department
+      const votesSnapshot = await getDocs(collection(db, "electionresults")); // Collection for votes
+      const nomineesSnapshot = await getDocs(collection(db, "nominees")); // Collection for nominees
+
+      const departmentCounts = {};
+      const groupedResults = {};
+
+      // Count total votes per department
+      votesSnapshot.forEach((doc) => {
+        const vote = doc.data();
+        const { department } = vote;
+
+        if (department) {
+          if (!departmentCounts[department]) {
+            departmentCounts[department] = 0;
+          }
+          departmentCounts[department] += 1;
+        }
+      });
+
+      // Initialize groupedResults with positions and nominees
+      nomineesSnapshot.forEach((doc) => {
+        const nominee = doc.data();
+        const { name, position, score } = nominee;
+
+        if (!groupedResults[position]) {
+          groupedResults[position] = [];
+        }
+
+        groupedResults[position].push({
+          name: name || "No Name Provided",
+          totalVotes: score || 0,
+          departmentPercentages: {}, // Will be calculated below
+        });
+      });
+
+      // Calculate department percentages for each nominee
       votesSnapshot.forEach((doc) => {
         const vote = doc.data();
         const { candidate, department } = vote;
 
-        if (!candidates[candidate]) {
-          candidates[candidate] = { totalVotes: 0, departments: {} };
+        if (candidate && department) {
+          // Find the candidate in groupedResults
+          for (const position in groupedResults) {
+            const nominee = groupedResults[position].find((n) => n.name === candidate);
+            if (nominee) {
+              // Increment the department count for this candidate
+              if (!nominee.departmentPercentages[department]) {
+                nominee.departmentPercentages[department] = 0;
+              }
+              nominee.departmentPercentages[department] += 1;
+            }
+          }
         }
-
-        candidates[candidate].totalVotes += 1;
-        candidates[candidate].departments[department] = (candidates[candidate].departments[department] || 0) + 1;
-
-        if (!departments[department]) {
-          departments[department] = 0;
-        }
-
-        departments[department] += 1;
       });
 
-      // Calculate percentage by department for each candidate
-      this.results = Object.entries(candidates).map(([name, data]) => {
-        const departmentPercentages = {};
-        for (const [department, count] of Object.entries(data.departments)) {
-          departmentPercentages[department] = (count / departments[department]) * 100;
-        }
+      // Calculate percentages for each department
+      for (const position in groupedResults) {
+        groupedResults[position].forEach((nominee) => {
+          for (const department in nominee.departmentPercentages) {
+            nominee.departmentPercentages[department] =
+              (nominee.departmentPercentages[department] / departmentCounts[department]) * 100;
+          }
+        });
+      }
 
-        return { name, totalVotes: data.totalVotes, departmentPercentages };
-      });
+      this.results = groupedResults;
     },
   },
 };
@@ -104,9 +142,8 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: hidden; /* Prevent horizontal scrolling */
-  padding-bottom: 20px; /* Add padding at the bottom for better spacing */
+  overflow-y: auto;
+  padding-bottom: 20px;
 }
 
 .results-container {
@@ -119,11 +156,17 @@ export default {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
-.results-title {
-  margin-top: 20px;
-  font-size: 24px;
+.position-container {
+  margin-bottom: 20px;
+}
+
+.position-title {
+  font-size: 22px;
   font-weight: bold;
   text-align: center;
+  margin-bottom: 15px;
+  color: #000;
+  text-transform: uppercase;
 }
 
 .results-table {

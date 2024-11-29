@@ -14,29 +14,82 @@
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
     <div class="buttons-container">
-      <button class="btn add-nominee" @click="addNominee">Add Nominee</button>
+      <button class="btn add-nominee" @click="openPositionSelectionModal">
+        Add Nominee
+      </button>
       <button class="btn reset" @click="resetAndRemoveNominees">Reset</button>
-      <button class="btn submit-votes" @click="submitVotes" :disabled="nominees.length === 0 || isSubmitting">
+      <button
+        class="btn submit-votes"
+        @click="submitVotes"
+        :disabled="nominees.length === 0 || isSubmitting"
+      >
         Submit Votes
       </button>
       <button class="btn logout" @click="logout">Logout</button>
     </div>
 
     <!-- Positions and Nominees -->
-    <div class="position-container" v-for="(nominees, position) in groupedNominees" :key="position">
+    <div
+      class="position-container"
+      v-for="(nominees, position) in groupedNominees"
+      :key="position"
+    >
       <h2 class="position-title">{{ position }}</h2>
       <div class="nominees-row">
-        <div v-for="nominee in nominees" :key="nominee.id" class="card id-card">
+        <div
+          v-for="nominee in nominees"
+          :key="nominee.id"
+          class="card id-card"
+        >
           <div class="photo-container">
-            <img v-if="nominee.photo" :src="nominee.photo" alt="Nominee Photo" class="nominee-photo" />
-            <button v-else class="btn add-photo" @click="addPhoto(nominee.id)">Add Photo</button>
+            <img
+              v-if="nominee.photo"
+              :src="nominee.photo"
+              alt="Nominee Photo"
+              class="nominee-photo"
+            />
+            <button
+              v-else
+              class="btn add-photo"
+              @click="addPhoto(nominee.id)"
+            >
+              Add Photo
+            </button>
           </div>
           <div class="info-container">
             <h3 class="nominee-title">{{ nominee.name }}</h3>
-            <p class="votes-label">Votes: <span>{{ nominee.score }}</span></p>
+            <p class="department-label">Department: {{ nominee.department }}</p>
+            <p class="votes-label">
+              Votes: <span>{{ nominee.score }}</span>
+            </p>
           </div>
-          <button class="btn remove-candidate" @click="removeCandidate(nominee.id)">Remove Candidate</button>
+          <button
+            class="btn remove-candidate"
+            @click="removeCandidate(nominee.id)"
+          >
+            Remove Candidate
+          </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal for Position Selection -->
+    <div v-if="showPositionModal" class="modal-overlay">
+      <div class="modal">
+        <h3>Select Position</h3>
+        <div class="position-buttons">
+          <button
+            v-for="position in validPositions"
+            :key="position"
+            class="btn position-btn"
+            @click="addNominee(position)"
+          >
+            {{ position }}
+          </button>
+        </div>
+        <button class="btn close-modal" @click="closePositionSelectionModal">
+          Close
+        </button>
       </div>
     </div>
 
@@ -46,69 +99,85 @@
 </template>
 
 <script>
-import { io } from 'socket.io-client';
-import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, where } from "firebase/firestore";
+import { getAuth } from "firebase/auth"; // Import Firebase Authentication
 
 export default {
-  name: 'HomePage',
+  name: "HomePage",
   data() {
     return {
-      nominees: [], // Array to store nominees and their vote counts
-      socket: null,
+      nominees: [],
+      showPositionModal: false,
+      validPositions: [
+        "PRESIDENT", "VICE-PRESIDENT", "SECRETARY", "TREASURER", "AUDITOR", "BUSINESS MANAGER",
+        "PUBLIC INFORMATION OFFICER", "PUBLIC RELATIONS OFFICER", "CREATIVE DIRECTOR",
+        "EXECUTIVE ASSISTANT TO THE PRESIDENT", "ASSISTANT SECRETARY", "ASSISTANT TREASURER",
+        "ASSISTANT AUDITOR", "ASSISTANT BUSINESS MANAGER", "ASSISTANT CREATIVE DIRECTOR",
+        "CHIEF OF STAFF", "EXECUTIVE STAFF",
+      ],
       isSubmitting: false,
+      userDepartment: "", // Will hold the department of the logged-in user
     };
   },
   computed: {
     groupedNominees() {
       return this.nominees.reduce((groups, nominee) => {
-        const position = nominee.position || 'Others';
+        const position = nominee.position || "Others";
         if (!groups[position]) groups[position] = [];
         groups[position].push(nominee);
         return groups;
       }, {});
     },
   },
-  mounted() {
-    this.socket = io('http://localhost:3001');
-
-    this.socket.on('connect', () => {
-      console.log('Connected to backend server on port 3001');
-    });
-
-    this.fetchNominees();
-
-    this.socket.on('nomineeUpdate', (updatedNominees) => {
-      this.updateNomineeData(updatedNominees);
-    });
-  },
   methods: {
-    async addNominee() {
+    openPositionSelectionModal() {
+      this.showPositionModal = true;
+    },
+    closePositionSelectionModal() {
+      this.showPositionModal = false;
+    },
+    // Fetch department from users collection for the logged-in user
+    async fetchUserDepartment() {
+      const db = getFirestore();
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (user) {
+        const q = query(collection(db, "users"), where("email", "==", user.email));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((doc) => {
+          this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
+        });
+      }
+    },
+    async addNominee(position) {
       const name = prompt("Enter nominee's name:");
       if (!name) return;
 
-      const position = prompt("Enter the position the nominee is running for (e.g., President, Vice-President):");
-      if (!position) return;
-
+      // Use the department fetched from the current logged-in user
       const nominee = {
         name,
         position,
-        score: 0, // Initial vote count
-        photo: null, // No photo initially
+        department: this.userDepartment, // Assign department from logged-in user
+        score: 0,
+        photo: null,
       };
 
       const db = getFirestore();
       try {
-        const docRef = await addDoc(collection(db, 'nominees'), nominee); // Save to Firestore
-        this.nominees.push({ ...nominee, id: docRef.id }); // Add to local state
-        alert('Nominee added successfully!');
+        const docRef = await addDoc(collection(db, "nominees"), nominee);
+        this.nominees.push({ ...nominee, id: docRef.id });
+        alert(`Nominee for ${position} added successfully!`);
       } catch (error) {
-        console.error('Error adding nominee:', error);
+        console.error("Error adding nominee:", error);
+      } finally {
+        this.closePositionSelectionModal();
       }
     },
     async addPhoto(nomineeId) {
       const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
       if (nomineeIndex === -1) {
-        console.error('Nominee not found');
+        console.error("Nominee not found");
         return;
       }
 
@@ -116,23 +185,19 @@ export default {
       if (photoFile) {
         this.nominees[nomineeIndex].photo = photoFile;
 
-        // Update Firestore with the photo URL
         const db = getFirestore();
-        const nomineeRef = doc(db, 'nominees', nomineeId);
+        const nomineeRef = doc(db, "nominees", nomineeId);
         try {
           await updateDoc(nomineeRef, { photo: photoFile });
-          console.log('Photo updated successfully in Firestore.');
         } catch (error) {
-          console.error('Error updating photo in Firestore:', error);
+          console.error("Error updating photo in Firestore:", error);
         }
-      } else {
-        console.warn('Photo upload failed or was canceled');
       }
     },
     async uploadPhoto() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
 
       return new Promise((resolve) => {
         input.onchange = async (e) => {
@@ -140,7 +205,7 @@ export default {
           if (file) {
             const reader = new FileReader();
             reader.onload = () => {
-              resolve(reader.result); // Return base64 data URL
+              resolve(reader.result);
             };
             reader.readAsDataURL(file);
           } else {
@@ -153,72 +218,143 @@ export default {
     async removeCandidate(nomineeId) {
       const db = getFirestore();
       try {
-        // Remove nominee from Firestore
-        await deleteDoc(doc(db, 'nominees', nomineeId));
-
-        // Remove nominee from local state
+        await deleteDoc(doc(db, "nominees", nomineeId));
         this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
-        alert('Nominee removed successfully!');
       } catch (error) {
-        console.error('Error removing nominee:', error);
+        console.error("Error removing nominee:", error);
       }
     },
     async resetAndRemoveNominees() {
       const db = getFirestore();
       try {
-        // Fetch all nominees and delete them from Firestore
-        const snapshot = await getDocs(collection(db, 'nominees'));
+        const snapshot = await getDocs(collection(db, "nominees"));
         const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
         await Promise.all(deletePromises);
 
-        // Clear the local state
         this.nominees = [];
-        alert('All nominees have been removed.');
+        alert("All nominees have been removed.");
       } catch (error) {
-        console.error('Error removing nominees:', error);
+        console.error("Error removing nominees:", error);
       }
     },
     async fetchNominees() {
       const db = getFirestore();
       try {
-        const snapshot = await getDocs(collection(db, 'nominees'));
+        const snapshot = await getDocs(collection(db, "nominees"));
         this.nominees = snapshot.docs.map((doc) => ({
           ...doc.data(),
           id: doc.id,
         }));
       } catch (error) {
-        console.error('Error fetching nominees:', error);
+        console.error("Error fetching nominees:", error);
       }
     },
     async submitVotes() {
+      if (this.nominees.length === 0) {
+        alert("No nominees to submit votes for.");
+        return;
+      }
+
       this.isSubmitting = true;
 
-      console.log('Votes submitted:', this.nominees);
-      alert('Votes submitted successfully!');
+      try {
+        const db = getFirestore();
+        const resultsCollection = collection(db, "electionresults");
 
-      this.isSubmitting = false;
+        const votes = this.nominees.map((nominee) => ({
+          name: nominee.name,
+          position: nominee.position,
+          votes: nominee.score,
+          department: nominee.department, // Add department to the vote
+          timestamp: new Date(),
+        }));
+
+        const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
+        await Promise.all(savePromises);
+
+        alert("Votes have been successfully saved to election results!");
+        console.log("Election results saved:", votes);
+      } catch (error) {
+        console.error("Error saving election results:", error);
+        alert("An error occurred while saving election results. Please try again.");
+      } finally {
+        this.isSubmitting = false;
+      }
     },
     logout() {
-      localStorage.removeItem('authToken');
-      this.$router.push('/');
-    },
-    updateNomineeData(updatedNominees) {
-      this.nominees = updatedNominees.map((nominee) => ({
-        ...nominee,
-        score: nominee.score || 0,
-      }));
+      localStorage.removeItem("authToken");
+      this.$router.push("/");
     },
   },
-  beforeUnmount() {
-    if (this.socket) {
-      this.socket.disconnect();
-    }
+  mounted() {
+    this.fetchNominees();
+    this.fetchUserDepartment(); // Fetch department on component mount
   },
 };
 </script>
 
+<style scoped>
+/* Add your styles here */
+</style>
 
 <style scoped>
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  text-align: center;
+  max-width: 500px;
+  width: 90%;
+}
+
+.position-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.position-btn {
+  padding: 10px 20px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.position-btn:hover {
+  background-color: #0056b3;
+}
+
+.close-modal {
+  margin-top: 20px;
+  padding: 10px 20px;
+  border: none;
+  background-color: #ff0000;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.close-modal:hover {
+  background-color: #cc0000;
+}
+
 .remove-candidate {
   background-color: #ff0000;
   color: #fff;
@@ -230,15 +366,15 @@ export default {
 
 .container {
   width: 100%;
-  min-height: 100vh; /* Allow content to dictate height */
+  min-height: 100vh;
   background-color: #3b3b50;
   color: #ffffff;
   display: flex;
   flex-direction: column;
   align-items: center;
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: hidden; /* Prevent horizontal scrolling */
-  padding-bottom: 20px; /* Add padding at the bottom for better spacing */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 20px;
 }
 
 .position-container {
@@ -314,6 +450,12 @@ export default {
 
 .votes-label {
   font-size: 16px;
+}
+
+.department-label {
+  font-size: 14px;
+  margin-top: 5px;
+  color: #555;
 }
 
 .add-photo {
