@@ -5,14 +5,13 @@
       <nav>
         <ul>
           <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
-          <li><RouterLink to="/register" class="btn">Register</RouterLink></li>
+          <li><RouterLink to="/electionresults" class="btn">Election Results</RouterLink></li>
         </ul>
       </nav>
     </header>
 
     <img src="@/assets/ivotelogo.png" alt="Logo" class="logo" />
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
-    <h2 class="nominees-label">Nominees:</h2>
 
     <div class="buttons-container">
       <button class="btn add-nominee" @click="addNominee">Add Nominee</button>
@@ -23,15 +22,23 @@
       <button class="btn logout" @click="logout">Logout</button>
     </div>
 
-    <div class="nominees-container">
-      <div v-for="nominee in nominees" :key="nominee.id" class="card">
-        <h3 class="nominee-title">{{ nominee.name }}</h3>
-        <p>Votes: <span>{{ nominee.score }}</span></p> <!-- Display nominee score -->
-        <button class="btn rename" @click="renameNominee(nominee.id)">Rename</button>
+    <!-- Positions and Nominees -->
+    <div class="position-container" v-for="(nominees, position) in groupedNominees" :key="position">
+      <h2 class="position-title">{{ position }}</h2>
+      <div class="nominees-row">
+        <div v-for="nominee in nominees" :key="nominee.id" class="card id-card">
+          <div class="photo-container">
+            <img v-if="nominee.photo" :src="nominee.photo" alt="Nominee Photo" class="nominee-photo" />
+            <button v-else class="btn add-photo" @click="addPhoto(nominee.id)">Add Photo</button>
+          </div>
+          <div class="info-container">
+            <h3 class="nominee-title">{{ nominee.name }}</h3>
+            <p class="votes-label">Votes: <span>{{ nominee.score }}</span></p>
+          </div>
+          <button class="btn remove-candidate" @click="removeCandidate(nominee.id)">Remove Candidate</button>
+        </div>
       </div>
     </div>
-
-
 
     <p class="year">2024</p>
     <p class="footer">Group 7 (iVOTE)</p>
@@ -40,136 +47,285 @@
 
 <script>
 import { io } from 'socket.io-client';
-import { db } from '@/firebase'; // Adjust the path as necessary
-import { collection, onSnapshot, addDoc } from 'firebase/firestore'; // For Firestore
+import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 
 export default {
   name: 'HomePage',
   data() {
     return {
       nominees: [], // Array to store nominees and their vote counts
-      nextId: 1,
       socket: null,
       isSubmitting: false,
     };
   },
+  computed: {
+    groupedNominees() {
+      return this.nominees.reduce((groups, nominee) => {
+        const position = nominee.position || 'Others';
+        if (!groups[position]) groups[position] = [];
+        groups[position].push(nominee);
+        return groups;
+      }, {});
+    },
+  },
   mounted() {
-    // Connect to backend running on port 3001
     this.socket = io('http://localhost:3001');
 
     this.socket.on('connect', () => {
       console.log('Connected to backend server on port 3001');
     });
 
-    // Fetch nominees' votes from Firestore
     this.fetchNominees();
 
-    // Listen for nominee updates from the backend
     this.socket.on('nomineeUpdate', (updatedNominees) => {
-      this.updateNomineeData(updatedNominees); // Update nominees with the new data
+      this.updateNomineeData(updatedNominees);
     });
   },
   methods: {
-    addNominee() {
+    async addNominee() {
       const name = prompt("Enter nominee's name:");
-      if (name) {
-        const nominee = { id: this.nextId.toString(), name, score: 0 };
-        this.nominees.push(nominee);
-        this.nextId++;
-        this.socket.emit('addNominee', nominee); // Emit to backend
+      if (!name) return;
+
+      const position = prompt("Enter the position the nominee is running for (e.g., President, Vice-President):");
+      if (!position) return;
+
+      const nominee = {
+        name,
+        position,
+        score: 0, // Initial vote count
+        photo: null, // No photo initially
+      };
+
+      const db = getFirestore();
+      try {
+        const docRef = await addDoc(collection(db, 'nominees'), nominee); // Save to Firestore
+        this.nominees.push({ ...nominee, id: docRef.id }); // Add to local state
+        alert('Nominee added successfully!');
+      } catch (error) {
+        console.error('Error adding nominee:', error);
       }
     },
+    async addPhoto(nomineeId) {
+      const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
+      if (nomineeIndex === -1) {
+        console.error('Nominee not found');
+        return;
+      }
 
-    resetAndRemoveNominees() {
-      this.nominees = [];
-      this.nextId = 1;
-    },
+      const photoFile = await this.uploadPhoto();
+      if (photoFile) {
+        this.nominees[nomineeIndex].photo = photoFile;
 
-    renameNominee(nomineeId) {
-      const nominee = this.nominees.find(n => n.id === nomineeId);
-      if (nominee) {
-        const newName = prompt("Enter the new name:");
-        if (newName) {
-          nominee.name = newName;
-          this.socket.emit('renameNominee', nominee); // Emit to backend
+        // Update Firestore with the photo URL
+        const db = getFirestore();
+        const nomineeRef = doc(db, 'nominees', nomineeId);
+        try {
+          await updateDoc(nomineeRef, { photo: photoFile });
+          console.log('Photo updated successfully in Firestore.');
+        } catch (error) {
+          console.error('Error updating photo in Firestore:', error);
         }
+      } else {
+        console.warn('Photo upload failed or was canceled');
       }
     },
+    async uploadPhoto() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
 
-    async fetchNominees() {
-      const votesCollection = collection(db, 'votes');
-      onSnapshot(votesCollection, (snapshot) => {
-        const voteCounts = {};
-        snapshot.forEach(doc => {
-          const vote = doc.data().vote;
-          if (voteCounts[vote]) {
-            voteCounts[vote]++;
+      return new Promise((resolve) => {
+        input.onchange = async (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve(reader.result); // Return base64 data URL
+            };
+            reader.readAsDataURL(file);
           } else {
-            voteCounts[vote] = 1;
+            resolve(null);
           }
-        });
-        this.updateNomineeScores(voteCounts);
+        };
+        input.click();
       });
     },
+    async removeCandidate(nomineeId) {
+      const db = getFirestore();
+      try {
+        // Remove nominee from Firestore
+        await deleteDoc(doc(db, 'nominees', nomineeId));
 
-    updateNomineeScores(voteCounts) {
-      this.nominees.forEach(nominee => {
-        nominee.score = voteCounts[nominee.name] || 0; // Update score based on vote counts
-      });
+        // Remove nominee from local state
+        this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
+        alert('Nominee removed successfully!');
+      } catch (error) {
+        console.error('Error removing nominee:', error);
+      }
     },
+    async resetAndRemoveNominees() {
+      const db = getFirestore();
+      try {
+        // Fetch all nominees and delete them from Firestore
+        const snapshot = await getDocs(collection(db, 'nominees'));
+        const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
 
+        // Clear the local state
+        this.nominees = [];
+        alert('All nominees have been removed.');
+      } catch (error) {
+        console.error('Error removing nominees:', error);
+      }
+    },
+    async fetchNominees() {
+      const db = getFirestore();
+      try {
+        const snapshot = await getDocs(collection(db, 'nominees'));
+        this.nominees = snapshot.docs.map((doc) => ({
+          ...doc.data(),
+          id: doc.id,
+        }));
+      } catch (error) {
+        console.error('Error fetching nominees:', error);
+      }
+    },
     async submitVotes() {
       this.isSubmitting = true;
 
-      // Prepare the data to be saved
-      const electionResults = this.nominees.map(nominee => ({
-        name: nominee.name,
-        score: nominee.score,
-        timestamp: new Date().toISOString() // Add a timestamp for when the votes were submitted
-      }));
-
-      // Save each nominee's result to Firestore
-      const resultsCollection = collection(db, 'electionResults'); // Reference to the results collection
-      try {
-        for (const result of electionResults) {
-          await addDoc(resultsCollection, result); // Save each result
-        }
-        console.log('Votes submitted:', electionResults);
-        alert('Votes submitted successfully!'); // Optional: Notify the user
-      } catch (error) {
-        console.error('Error submitting votes:', error);
-        alert('Error submitting votes. Please try again.'); // Optional: Notify the user
-      }
+      console.log('Votes submitted:', this.nominees);
+      alert('Votes submitted successfully!');
 
       this.isSubmitting = false;
     },
-
     logout() {
-      localStorage.removeItem('authToken'); // Clear authentication state
-      this.$router.push('/'); // Redirect to login page
+      localStorage.removeItem('authToken');
+      this.$router.push('/');
     },
-
     updateNomineeData(updatedNominees) {
-      this.nominees = updatedNominees.map(nominee => ({
+      this.nominees = updatedNominees.map((nominee) => ({
         ...nominee,
-        score: nominee.score || 0 // Ensure there's a score property
+        score: nominee.score || 0,
       }));
     },
   },
   beforeUnmount() {
     if (this.socket) {
- this.socket.disconnect();
+      this.socket.disconnect();
     }
   },
 };
 </script>
 
-<style scoped>
-/* Add your styles here */
-</style>
-
 
 <style scoped>
+.remove-candidate {
+  background-color: #ff0000;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.container {
+  width: 100%;
+  min-height: 100vh; /* Allow content to dictate height */
+  background-color: #3b3b50;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  padding-bottom: 20px; /* Add padding at the bottom for better spacing */
+}
+
+.position-container {
+  width: 80%;
+  margin-top: 30px;
+}
+
+.position-title {
+  font-size: 22px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 15px;
+  color: #ffffff;
+  text-transform: uppercase;
+  border-bottom: 2px solid #ffffff;
+  padding-bottom: 5px;
+}
+
+.nominees-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+}
+
+.id-card {
+  width: 200px;
+  height: 300px;
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  transition: transform 0.3s;
+}
+
+.id-card:hover {
+  transform: scale(1.05);
+}
+
+.photo-container {
+  width: 100%;
+  height: 150px;
+  background-color: #f4f4f4;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+}
+
+.nominee-photo {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.info-container {
+  padding: 10px;
+  text-align: center;
+}
+
+.nominee-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.votes-label {
+  font-size: 16px;
+}
+
+.add-photo {
+  background-color: #ffc107;
+  color: #000;
+  font-size: 14px;
+  padding: 5px 10px;
+  margin-top: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  cursor: pointer;
+}
 
 .navbar {
   display: flex;
@@ -180,6 +336,9 @@ export default {
   border-bottom: 2px solid #ddd;
   font-family: agrandir;
   width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .navbar nav ul {
@@ -193,7 +352,7 @@ export default {
 }
 
 .navbar nav ul li:hover {
-  opacity: .3;
+  opacity: 0.3;
 }
 
 .btn {
@@ -208,17 +367,6 @@ export default {
   cursor: pointer;
 }
 
-.container {
-  width: 100%;
-  height: 100vh;
-  background-color: #3b3b50;
-  color: #ffffff;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  overflow: hidden;
-}
-
 .logo {
   width: 200px;
   height: 100px;
@@ -229,18 +377,6 @@ export default {
   margin: 10px 0;
   font-size: 24px;
   font-weight: bold;
-  text-align: center;
-}
-
-.nominees-label {
-  margin-top: 20px;
-  font-size: 20px;
-  text-align: center;
-}
-
-.scores-label {
-  margin-top: 20px;
-  font-size: 20px;
   text-align: center;
 }
 
@@ -265,67 +401,6 @@ export default {
 .submit-votes {
   background-color: #007bff;
   color: #fff;
-}
-
-.nominees-container {
-  display: flex;
-  justify-content: space-around;
-  flex-wrap: wrap;
-  width: 100%;
-  padding: 0 20px;
-  box-sizing: border-box;
-  margin-top: 20px;
-}
-
-.scores-container {
-  display: flex;
-  justify-content: space-around;
-  flex-wrap: wrap;
-  width: 100%;
-  padding: 0 20px;
-  box-sizing: border-box;
-  margin-top: 20px;
-}
-
-.card, .score-card {
-  background-color: #4a4a61;
-  padding: 20px;
-  border-radius: 10px;
-  text-align: center;
-  margin-bottom: 20px;
-  position: relative;
-  width: 45%;
-  max-width: 200px;
-}
-
-.nominee-title {
-  font-size: 18px;
-  margin-bottom: 10px;
-}
-
-.score {
-  font-size: 48px;
-  margin: 20px 0;
-}
-
-.rename,
-.reset {
-  background-color: #007bff;
-  color: #fff;
-  margin: 5px 0;
-}
-
-.adjust-buttons {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 10px;
-}
-
-.plus,
-.minus {
-  background-color: #28a745;
-  color: #fff;
-  width: 40px;
 }
 
 .year {
