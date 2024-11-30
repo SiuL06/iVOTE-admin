@@ -98,7 +98,8 @@
 </template>
 
 <script>
-import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { getFirestore, collection, getDocs, addDoc, query, where } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 export default {
   name: "HomePage",
@@ -107,29 +108,19 @@ export default {
       nominees: [],
       showPositionModal: false,
       validPositions: [
-        "PRESIDENT",
-        "VICE-PRESIDENT",
-        "SECRETARY",
-        "TREASURER",
-        "AUDITOR",
-        "BUSINESS MANAGER",
-        "PUBLIC INFORMATION OFFICER",
-        "PUBLIC RELATIONS OFFICER",
-        "CREATIVE DIRECTOR",
-        "EXECUTIVE ASSISTANT TO THE PRESIDENT",
-        "ASSISTANT SECRETARY",
-        "ASSISTANT TREASURER",
-        "ASSISTANT AUDITOR",
-        "ASSISTANT BUSINESS MANAGER",
-        "ASSISTANT CREATIVE DIRECTOR",
-        "CHIEF OF STAFF",
-        "EXECUTIVE STAFF",
+        "PRESIDENT", "VICE-PRESIDENT", "SECRETARY", "TREASURER", "AUDITOR", "BUSINESS MANAGER",
+        "PUBLIC INFORMATION OFFICER", "PUBLIC RELATIONS OFFICER", "CREATIVE DIRECTOR",
+        "EXECUTIVE ASSISTANT TO THE PRESIDENT", "ASSISTANT SECRETARY", "ASSISTANT TREASURER",
+        "ASSISTANT AUDITOR", "ASSISTANT BUSINESS MANAGER", "ASSISTANT CREATIVE DIRECTOR",
+        "CHIEF OF STAFF", "EXECUTIVE STAFF"
       ],
       isSubmitting: false,
+      userDepartment: "", // Will hold the department of the logged-in user
+      userVoucher: "", // Will hold the voucher of the logged-in user
     };
   },
   computed: {
-    // This computed property ensures that the positions are sorted in the desired order
+    // Ensure that positions are grouped and sorted
     sortedGroupedNominees() {
       const grouped = this.groupedNominees;
       const sorted = {};
@@ -156,7 +147,72 @@ export default {
       this.showPositionModal = true;
     },
     closePositionSelectionModal() {
-      this.showPositionModal = false;
+      this.showPositionSelectionModal = false;
+    },
+    // Fetch the logged-in user's department and voucher from Firestore
+    async fetchUserDetails() {
+      const db = getFirestore();
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (user) {
+        const q = query(collection(db, "users"), where("email", "==", user.email));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((doc) => {
+          this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
+          this.userVoucher = doc.data().Voucher; // Fetch the voucher of the logged-in user
+        });
+      }
+    },
+    async submitVotes() {
+      if (this.nominees.length === 0) {
+        alert("No nominees to submit votes for.");
+        return;
+      }
+
+      this.isSubmitting = true;
+
+      try {
+        const db = getFirestore();
+        const resultsCollection = collection(db, "electionresults");
+
+        // Map through nominees and prepare the vote data
+        const votes = this.nominees.map((nominee) => ({
+          name: nominee.name,
+          position: nominee.position,
+          votes: nominee.score,
+          department: this.userDepartment,  // Add department from logged-in user
+          voucher: this.userVoucher, // Add voucher from logged-in user
+          timestamp: new Date(),
+        }));
+
+        // Save each vote to Firestore
+        const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
+        await Promise.all(savePromises);
+
+        alert("Votes have been successfully saved to election results!");
+        console.log("Election results saved:", votes);
+
+        // After saving, fetch the election results and update the results page
+        this.$router.push("/electionresults");  // Redirect to election results page
+      } catch (error) {
+        console.error("Error saving election results:", error);
+        alert("An error occurred while saving election results. Please try again.");
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    async fetchNominees() {
+      const db = getFirestore();
+      try {
+        const snapshot = await getDocs(collection(db, "nominees"));
+        this.nominees = snapshot.docs.map((doc) => ({
+          ...doc.data(),
+          id: doc.id,
+        }));
+      } catch (error) {
+        console.error("Error fetching nominees:", error);
+      }
     },
     async addNominee(position) {
       const name = prompt("Enter nominee's name:");
@@ -180,112 +236,6 @@ export default {
         this.closePositionSelectionModal();
       }
     },
-    async addPhoto(nomineeId) {
-      const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
-      if (nomineeIndex === -1) {
-        console.error("Nominee not found");
-        return;
-      }
-
-      const photoFile = await this.uploadPhoto();
-      if (photoFile) {
-        this.nominees[nomineeIndex].photo = photoFile;
-
-        const db = getFirestore();
-        const nomineeRef = doc(db, "nominees", nomineeId);
-        try {
-          await updateDoc(nomineeRef, { photo: photoFile });
-        } catch (error) {
-          console.error("Error updating photo in Firestore:", error);
-        }
-      }
-    },
-    async uploadPhoto() {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-
-      return new Promise((resolve) => {
-        input.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = () => {
-              resolve(reader.result);
-            };
-            reader.readAsDataURL(file);
-          } else {
-            resolve(null);
-          }
-        };
-        input.click();
-      });
-    },
-    async removeCandidate(nomineeId) {
-      const db = getFirestore();
-      try {
-        await deleteDoc(doc(db, "nominees", nomineeId));
-        this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
-      } catch (error) {
-        console.error("Error removing nominee:", error);
-      }
-    },
-    async resetAndRemoveNominees() {
-      const db = getFirestore();
-      try {
-        const snapshot = await getDocs(collection(db, "nominees"));
-        const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
-        await Promise.all(deletePromises);
-
-        this.nominees = [];
-        alert("All nominees have been removed.");
-      } catch (error) {
-        console.error("Error removing nominees:", error);
-      }
-    },
-    async fetchNominees() {
-      const db = getFirestore();
-      try {
-        const snapshot = await getDocs(collection(db, "nominees"));
-        this.nominees = snapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-        }));
-      } catch (error) {
-        console.error("Error fetching nominees:", error);
-      }
-    },
-    async submitVotes() {
-      if (this.nominees.length === 0) {
-        alert("No nominees to submit votes for.");
-        return;
-      }
-
-      this.isSubmitting = true;
-
-      try {
-        const db = getFirestore();
-        const resultsCollection = collection(db, "electionresults");
-
-        const votes = this.nominees.map((nominee) => ({
-          name: nominee.name,
-          position: nominee.position,
-          votes: nominee.score,
-          timestamp: new Date(),
-        }));
-
-        const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
-        await Promise.all(savePromises);
-
-        alert("Votes have been successfully saved to election results!");
-        console.log("Election results saved:", votes);
-      } catch (error) {
-        console.error("Error saving election results:", error);
-        alert("An error occurred while saving election results. Please try again.");
-      } finally {
-        this.isSubmitting = false;
-      }
-    },
     logout() {
       localStorage.removeItem("authToken");
       this.$router.push("/");
@@ -293,9 +243,11 @@ export default {
   },
   mounted() {
     this.fetchNominees();
+    this.fetchUserDetails(); // Fetch user department and voucher details on mount
   },
 };
 </script>
+
 
 
 <style scoped>
