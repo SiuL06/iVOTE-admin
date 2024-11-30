@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <header class="navbar">
-      <h1>Election</h1>
+      <h1></h1>
       <nav>
         <ul>
           <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
@@ -14,28 +14,60 @@
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
     <div class="buttons-container">
-      <button class="btn add-nominee" @click="openPositionSelectionModal">Add Nominee</button>
+      <button class="btn add-nominee" @click="openPositionSelectionModal">
+        Add Nominee
+      </button>
       <button class="btn reset" @click="resetAndRemoveNominees">Reset</button>
-      <button class="btn submit-votes" @click="submitVotes" :disabled="nominees.length === 0 || isSubmitting">
+      <button
+        class="btn submit-votes"
+        @click="submitVotes"
+        :disabled="nominees.length === 0 || isSubmitting"
+      >
         Submit Votes
       </button>
       <button class="btn logout" @click="logout">Logout</button>
     </div>
 
     <!-- Positions and Nominees -->
-    <div class="position-container" v-for="position in orderedGroupedNominees" :key="position.name">
-      <h2 class="position-title">{{ position.name }}</h2>
+    <div
+      class="position-container"
+      v-for="(nominees, position) in groupedNominees"
+      :key="position"
+    >
+      <h2 class="position-title">{{ position }}</h2>
       <div class="nominees-row">
-        <div v-for="nominee in position.nominees" :key="nominee.id" class="card id-card">
+        <div
+          v-for="nominee in nominees"
+          :key="nominee.id"
+          class="card id-card"
+        >
           <div class="photo-container">
-            <img v-if="nominee.photo" :src="nominee.photo" alt="Nominee Photo" class="nominee-photo" />
-            <input v-else type="file" accept="image/*" @change="handleFileUpload($event, nominee.id)" />
+            <img
+              v-if="nominee.photo"
+              :src="nominee.photo"
+              alt="Nominee Photo"
+              class="nominee-photo"
+            />
+            <button
+              v-else
+              class="btn add-photo"
+              @click="addPhoto(nominee.id)"
+            >
+              Add Photo
+            </button>
           </div>
           <div class="info-container">
             <h3 class="nominee-title">{{ nominee.name }}</h3>
-            <p class="votes-label">Votes: <span>{{ nominee.score }}</span></p>
+            <p class="votes-label">
+              Votes: <span>{{ nominee.score }}</span>
+            </p>
           </div>
-          <button class="btn remove-candidate" @click="removeCandidate(nominee.id)">Remove Candidate</button>
+          <button
+            class="btn remove-candidate"
+            @click="removeCandidate(nominee.id)"
+          >
+            Remove Candidate
+          </button>
         </div>
       </div>
     </div>
@@ -45,11 +77,18 @@
       <div class="modal">
         <h3>Select Position</h3>
         <div class="position-buttons">
-          <button v-for="position in validPositions" :key="position" class="btn position-btn" @click="addNominee(position)">
+          <button
+            v-for="position in validPositions"
+            :key="position"
+            class="btn position-btn"
+            @click="addNominee(position)"
+          >
             {{ position }}
           </button>
         </div>
-        <button class="btn close-modal" @click="closePositionSelectionModal">Close</button>
+        <button class="btn close-modal" @click="closePositionSelectionModal">
+          Close
+        </button>
       </div>
     </div>
 
@@ -59,16 +98,7 @@
 </template>
 
 <script>
-import {
-  getFirestore,
-  collection,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from "firebase/firestore";
 
 export default {
   name: "HomePage",
@@ -96,8 +126,6 @@ export default {
         "EXECUTIVE STAFF",
       ],
       isSubmitting: false,
-      userVoucher: "",
-      userDepartment: "",
     };
   },
   computed: {
@@ -109,14 +137,6 @@ export default {
         return groups;
       }, {});
     },
-    orderedGroupedNominees() {
-      return this.validPositions
-        .filter((position) => this.groupedNominees[position]?.length > 0)
-        .map((position) => ({
-          name: position,
-          nominees: this.groupedNominees[position],
-        }));
-    },
   },
   methods: {
     openPositionSelectionModal() {
@@ -125,47 +145,6 @@ export default {
     closePositionSelectionModal() {
       this.showPositionModal = false;
     },
-    async fetchNominees() {
-      const db = getFirestore();
-      try {
-        const snapshot = await getDocs(collection(db, "nominees"));
-        this.nominees = snapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-        }));
-      } catch (error) {
-        console.error("Error fetching nominees:", error);
-      }
-    },
-    async handleFileUpload(event, nomineeId) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const storage = getStorage();
-      const storageRef = ref(storage, `nominee-photos/${nomineeId}-${file.name}`);
-
-      try {
-        // Upload file to Firebase Storage
-        await uploadBytes(storageRef, file);
-
-        // Get download URL
-        const photoUrl = await getDownloadURL(storageRef);
-
-        // Update Firestore with the photo URL
-        const db = getFirestore();
-        await updateDoc(doc(db, "nominees", nomineeId), { photo: photoUrl });
-
-        // Update local nominees array
-        const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
-        if (nomineeIndex !== -1) {
-          this.nominees[nomineeIndex].photo = photoUrl;
-        }
-        alert("Photo added successfully!");
-      } catch (error) {
-        console.error("Error uploading photo:", error);
-        alert("Failed to upload photo. Please try again.");
-      }
-    },
     async addNominee(position) {
       const name = prompt("Enter nominee's name:");
       if (!name) return;
@@ -173,7 +152,6 @@ export default {
       const nominee = {
         name,
         position,
-        department: "N/A",
         score: 0,
         photo: null,
       };
@@ -189,33 +167,127 @@ export default {
         this.closePositionSelectionModal();
       }
     },
-    async removeCandidate(nomineeId) {
-      const confirmRemove = confirm("Are you sure you want to remove this candidate?");
-      if (!confirmRemove) return;
+    async addPhoto(nomineeId) {
+      const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
+      if (nomineeIndex === -1) {
+        console.error("Nominee not found");
+        return;
+      }
 
+      const photoFile = await this.uploadPhoto();
+      if (photoFile) {
+        this.nominees[nomineeIndex].photo = photoFile;
+
+        const db = getFirestore();
+        const nomineeRef = doc(db, "nominees", nomineeId);
+        try {
+          await updateDoc(nomineeRef, { photo: photoFile });
+        } catch (error) {
+          console.error("Error updating photo in Firestore:", error);
+        }
+      }
+    },
+    async uploadPhoto() {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+
+      return new Promise((resolve) => {
+        input.onchange = async (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve(reader.result);
+            };
+            reader.readAsDataURL(file);
+          } else {
+            resolve(null);
+          }
+        };
+        input.click();
+      });
+    },
+    async removeCandidate(nomineeId) {
       const db = getFirestore();
       try {
         await deleteDoc(doc(db, "nominees", nomineeId));
-        this.nominees = this.nominees.filter((n) => n.id !== nomineeId);
-        alert("Candidate removed successfully!");
+        this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
       } catch (error) {
-        console.error("Error removing candidate:", error);
-        alert("Failed to remove candidate. Please try again.");
+        console.error("Error removing nominee:", error);
+      }
+    },
+    async resetAndRemoveNominees() {
+      const db = getFirestore();
+      try {
+        const snapshot = await getDocs(collection(db, "nominees"));
+        const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+
+        this.nominees = [];
+        alert("All nominees have been removed.");
+      } catch (error) {
+        console.error("Error removing nominees:", error);
+      }
+    },
+    async fetchNominees() {
+      const db = getFirestore();
+      try {
+        const snapshot = await getDocs(collection(db, "nominees"));
+        this.nominees = snapshot.docs.map((doc) => ({
+          ...doc.data(),
+          id: doc.id,
+        }));
+      } catch (error) {
+        console.error("Error fetching nominees:", error);
+      }
+    },
+    async submitVotes() {
+      if (this.nominees.length === 0) {
+        alert("No nominees to submit votes for.");
+        return;
+      }
+
+      this.isSubmitting = true;
+
+      try {
+        const db = getFirestore();
+        const resultsCollection = collection(db, "electionresults");
+
+        const votes = this.nominees.map((nominee) => ({
+          name: nominee.name,
+          position: nominee.position,
+          votes: nominee.score,
+          timestamp: new Date(),
+        }));
+
+        const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
+        await Promise.all(savePromises);
+
+        alert("Votes have been successfully saved to election results!");
+        console.log("Election results saved:", votes);
+      } catch (error) {
+        console.error("Error saving election results:", error);
+        alert("An error occurred while saving election results. Please try again.");
+      } finally {
+        this.isSubmitting = false;
       }
     },
     logout() {
-      sessionStorage.clear();
-      alert("You have been logged out.");
+      localStorage.removeItem("authToken");
       this.$router.push("/");
     },
   },
-  async mounted() {
-    await this.fetchNominees();
-    this.userVoucher = sessionStorage.getItem("voucher") || "";
-    this.userDepartment = JSON.parse(sessionStorage.getItem("user"))?.Department || "";
+  mounted() {
+    this.fetchNominees();
   },
 };
 </script>
+
+<style scoped>
+/* Add your styles here */
+</style>
+
 
 
 
