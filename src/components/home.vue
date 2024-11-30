@@ -137,6 +137,35 @@ export default {
         console.error("Error fetching nominees:", error);
       }
     },
+    async handleFileUpload(event, nomineeId) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const storage = getStorage();
+      const storageRef = ref(storage, `nominee-photos/${nomineeId}-${file.name}`);
+
+      try {
+        // Upload file to Firebase Storage
+        await uploadBytes(storageRef, file);
+
+        // Get download URL
+        const photoUrl = await getDownloadURL(storageRef);
+
+        // Update Firestore with the photo URL
+        const db = getFirestore();
+        await updateDoc(doc(db, "nominees", nomineeId), { photo: photoUrl });
+
+        // Update local nominees array
+        const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
+        if (nomineeIndex !== -1) {
+          this.nominees[nomineeIndex].photo = photoUrl;
+        }
+        alert("Photo added successfully!");
+      } catch (error) {
+        console.error("Error uploading photo:", error);
+        alert("Failed to upload photo. Please try again.");
+      }
+    },
     async addNominee(position) {
       const name = prompt("Enter nominee's name:");
       if (!name) return;
@@ -160,30 +189,6 @@ export default {
         this.closePositionSelectionModal();
       }
     },
-    async handleFileUpload(event, nomineeId) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const storage = getStorage();
-      const storageRef = ref(storage, `nominee-photos/${nomineeId}-${file.name}`);
-
-      try {
-        await uploadBytes(storageRef, file);
-        const photoUrl = await getDownloadURL(storageRef);
-
-        const db = getFirestore();
-        await updateDoc(doc(db, "nominees", nomineeId), { photo: photoUrl });
-
-        const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
-        if (nomineeIndex !== -1) {
-          this.nominees[nomineeIndex].photo = photoUrl;
-        }
-        alert("Photo added successfully!");
-      } catch (error) {
-        console.error("Error uploading photo:", error);
-        alert("Failed to upload photo. Please try again.");
-      }
-    },
     async removeCandidate(nomineeId) {
       const confirmRemove = confirm("Are you sure you want to remove this candidate?");
       if (!confirmRemove) return;
@@ -196,50 +201,6 @@ export default {
       } catch (error) {
         console.error("Error removing candidate:", error);
         alert("Failed to remove candidate. Please try again.");
-      }
-    },
-    async resetAndRemoveNominees() {
-      const confirmReset = confirm("Are you sure you want to reset all nominees?");
-      if (!confirmReset) return;
-
-      const db = getFirestore();
-      try {
-        for (const nominee of this.nominees) {
-          await deleteDoc(doc(db, "nominees", nominee.id));
-        }
-        this.nominees = [];
-        alert("All nominees have been reset.");
-      } catch (error) {
-        console.error("Error resetting nominees:", error);
-        alert("Failed to reset nominees. Please try again.");
-      }
-    },
-    async submitVotes() {
-      const confirmSubmit = confirm("Are you sure you want to submit the votes?");
-      if (!confirmSubmit) return;
-
-      this.isSubmitting = true;
-      const db = getFirestore();
-
-      try {
-        for (const nominee of this.nominees) {
-          if (nominee.score > 0) {
-            await addDoc(collection(db, "electionresults"), {
-              Candidate: nominee.name,
-              Position: nominee.position,
-              Department: this.userDepartment,
-              Voucher: this.userVoucher,
-              Votes: nominee.score,
-              Timestamp: new Date(),
-            });
-          }
-        }
-        alert("Votes have been submitted successfully!");
-      } catch (error) {
-        console.error("Error submitting votes:", error);
-        alert("Failed to submit votes. Please try again.");
-      } finally {
-        this.isSubmitting = false;
       }
     },
     logout() {
@@ -255,12 +216,6 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-/* Add your styles here */
-</style>
-
-
 
 
 
