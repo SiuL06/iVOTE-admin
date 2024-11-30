@@ -107,6 +107,7 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  updateDoc,
 } from "firebase/firestore";
 
 export default {
@@ -135,6 +136,8 @@ export default {
         "EXECUTIVE STAFF",
       ],
       isSubmitting: false,
+      userVoucher: "", // User's voucher code
+      userDepartment: "", // User's department
     };
   },
   computed: {
@@ -222,13 +225,47 @@ export default {
       if (!confirmSubmit) return;
 
       this.isSubmitting = true;
+      const db = getFirestore();
+
       try {
+        for (const nominee of this.nominees) {
+          if (nominee.score > 0) {
+            // Create a document for each vote in the electionresults collection
+            await addDoc(collection(db, "electionresults"), {
+              Candidate: nominee.name,
+              Position: nominee.position,
+              Department: this.userDepartment, // Include department of voter
+              Voucher: this.userVoucher, // Include voter's voucher code
+              Votes: nominee.score, // Number of votes the nominee received
+              Timestamp: new Date(), // Time of vote submission
+            });
+          }
+        }
         alert("Votes have been submitted successfully!");
       } catch (error) {
         console.error("Error submitting votes:", error);
         alert("Failed to submit votes. Please try again.");
       } finally {
         this.isSubmitting = false;
+      }
+    },
+    async updateNominee(nomineeId, updates) {
+      const db = getFirestore();
+      try {
+        const nomineeRef = doc(db, "nominees", nomineeId);
+        await updateDoc(nomineeRef, updates);
+        // Reflect changes locally
+        const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
+        if (nomineeIndex !== -1) {
+          this.nominees[nomineeIndex] = {
+            ...this.nominees[nomineeIndex],
+            ...updates,
+          };
+        }
+        alert("Nominee updated successfully!");
+      } catch (error) {
+        console.error("Error updating nominee:", error);
+        alert("Failed to update nominee. Please try again.");
       }
     },
     logout() {
@@ -239,19 +276,14 @@ export default {
   },
   async mounted() {
     await this.fetchNominees();
+    // Fetch voter information (Voucher and Department) from session storage
+    this.userVoucher = sessionStorage.getItem("voucher") || "";
+    this.userDepartment =
+      JSON.parse(sessionStorage.getItem("user"))?.Department || "";
   },
 };
 </script>
 
-<style scoped>
-/* Styles are unchanged from your initial code */
-</style>
-
-
-
-<style scoped>
-/* Your existing styles */
-</style>
 
 
 <style scoped>
