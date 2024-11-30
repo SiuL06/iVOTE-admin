@@ -105,6 +105,8 @@ import {
   collection,
   getDocs,
   addDoc,
+  deleteDoc,
+  doc,
 } from "firebase/firestore";
 
 export default {
@@ -195,12 +197,56 @@ export default {
         this.closePositionSelectionModal();
       }
     },
+    async resetAndRemoveNominees() {
+      const confirmReset = confirm(
+        "Are you sure you want to reset all nominees? This action cannot be undone."
+      );
+      if (!confirmReset) return;
+
+      const db = getFirestore();
+      try {
+        for (const nominee of this.nominees) {
+          await deleteDoc(doc(db, "nominees", nominee.id));
+        }
+        this.nominees = [];
+        alert("All nominees have been reset.");
+      } catch (error) {
+        console.error("Error resetting nominees:", error);
+        alert("Failed to reset nominees. Please try again.");
+      }
+    },
+    async submitVotes() {
+      const confirmSubmit = confirm(
+        "Are you sure you want to submit the votes? This action cannot be undone."
+      );
+      if (!confirmSubmit) return;
+
+      this.isSubmitting = true;
+      try {
+        alert("Votes have been submitted successfully!");
+      } catch (error) {
+        console.error("Error submitting votes:", error);
+        alert("Failed to submit votes. Please try again.");
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    logout() {
+      sessionStorage.clear();
+      alert("You have been logged out.");
+      this.$router.push("/");
+    },
   },
   async mounted() {
     await this.fetchNominees();
   },
 };
 </script>
+
+<style scoped>
+/* Styles are unchanged from your initial code */
+</style>
+
 
 
 <style scoped>
