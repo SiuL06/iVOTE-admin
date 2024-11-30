@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <header class="navbar">
-      <h1></h1>
+      <h1>Election</h1>
       <nav>
         <ul>
           <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
@@ -136,8 +136,8 @@ export default {
         "EXECUTIVE STAFF",
       ],
       isSubmitting: false,
-      userVoucher: "", // User's voucher code
-      userDepartment: "", // User's department
+      userVoucher: "",
+      userDepartment: "",
     };
   },
   computed: {
@@ -184,7 +184,7 @@ export default {
       const nominee = {
         name,
         position,
-        department: "N/A", // Replace or fetch dynamically if necessary
+        department: "N/A",
         score: 0,
         photo: null,
       };
@@ -198,6 +198,39 @@ export default {
         console.error("Error adding nominee:", error);
       } finally {
         this.closePositionSelectionModal();
+      }
+    },
+    async addPhoto(nomineeId) {
+      const photoUrl = prompt("Enter the URL of the nominee's photo:");
+      if (!photoUrl) return;
+
+      const db = getFirestore();
+      try {
+        await updateDoc(doc(db, "nominees", nomineeId), { photo: photoUrl });
+        const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
+        if (nomineeIndex !== -1) {
+          this.nominees[nomineeIndex].photo = photoUrl;
+        }
+        alert("Photo added successfully!");
+      } catch (error) {
+        console.error("Error adding photo:", error);
+        alert("Failed to add photo. Please try again.");
+      }
+    },
+    async removeCandidate(nomineeId) {
+      const confirmRemove = confirm(
+        "Are you sure you want to remove this candidate? This action cannot be undone."
+      );
+      if (!confirmRemove) return;
+
+      const db = getFirestore();
+      try {
+        await deleteDoc(doc(db, "nominees", nomineeId));
+        this.nominees = this.nominees.filter((n) => n.id !== nomineeId);
+        alert("Candidate removed successfully!");
+      } catch (error) {
+        console.error("Error removing candidate:", error);
+        alert("Failed to remove candidate. Please try again.");
       }
     },
     async resetAndRemoveNominees() {
@@ -230,14 +263,13 @@ export default {
       try {
         for (const nominee of this.nominees) {
           if (nominee.score > 0) {
-            // Create a document for each vote in the electionresults collection
             await addDoc(collection(db, "electionresults"), {
               Candidate: nominee.name,
               Position: nominee.position,
-              Department: this.userDepartment, // Include department of voter
-              Voucher: this.userVoucher, // Include voter's voucher code
-              Votes: nominee.score, // Number of votes the nominee received
-              Timestamp: new Date(), // Time of vote submission
+              Department: this.userDepartment,
+              Voucher: this.userVoucher,
+              Votes: nominee.score,
+              Timestamp: new Date(),
             });
           }
         }
@@ -249,25 +281,6 @@ export default {
         this.isSubmitting = false;
       }
     },
-    async updateNominee(nomineeId, updates) {
-      const db = getFirestore();
-      try {
-        const nomineeRef = doc(db, "nominees", nomineeId);
-        await updateDoc(nomineeRef, updates);
-        // Reflect changes locally
-        const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
-        if (nomineeIndex !== -1) {
-          this.nominees[nomineeIndex] = {
-            ...this.nominees[nomineeIndex],
-            ...updates,
-          };
-        }
-        alert("Nominee updated successfully!");
-      } catch (error) {
-        console.error("Error updating nominee:", error);
-        alert("Failed to update nominee. Please try again.");
-      }
-    },
     logout() {
       sessionStorage.clear();
       alert("You have been logged out.");
@@ -276,13 +289,17 @@ export default {
   },
   async mounted() {
     await this.fetchNominees();
-    // Fetch voter information (Voucher and Department) from session storage
     this.userVoucher = sessionStorage.getItem("voucher") || "";
     this.userDepartment =
       JSON.parse(sessionStorage.getItem("user"))?.Department || "";
   },
 };
 </script>
+
+<style scoped>
+/* Add your styles here */
+</style>
+
 
 
 
