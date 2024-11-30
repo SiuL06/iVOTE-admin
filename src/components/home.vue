@@ -97,6 +97,105 @@
   </div>
 </template>
 
+<template>
+  <div class="container">
+    <header class="navbar">
+      <h1></h1>
+      <nav>
+        <ul>
+          <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
+          <li><RouterLink to="/electionresults" class="btn">Election Results</RouterLink></li>
+        </ul>
+      </nav>
+    </header>
+
+    <img src="@/assets/ivotelogo.png" alt="Logo" class="logo" />
+    <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
+
+    <div class="buttons-container">
+      <button class="btn add-nominee" @click="openPositionSelectionModal">
+        Add Nominee
+      </button>
+      <button class="btn reset" @click="resetAndRemoveNominees">Reset</button>
+      <button
+        class="btn submit-votes"
+        @click="submitVotes"
+        :disabled="nominees.length === 0 || isSubmitting"
+      >
+        Submit Votes
+      </button>
+      <button class="btn logout" @click="logout">Logout</button>
+    </div>
+
+    <!-- Positions and Nominees -->
+    <div
+      class="position-container"
+      v-for="(nominees, position) in sortedGroupedNominees"
+      :key="position"
+    >
+      <h2 class="position-title">{{ position }}</h2>
+      <div class="nominees-row">
+        <div
+          v-for="nominee in nominees"
+          :key="nominee.id"
+          class="card id-card"
+        >
+          <div class="photo-container">
+            <img
+              v-if="nominee.photo"
+              :src="nominee.photo"
+              alt="Nominee Photo"
+              class="nominee-photo"
+            />
+            <button
+              v-else
+              class="btn add-photo"
+              @click="addPhoto(nominee.id)"
+            >
+              Add Photo
+            </button>
+          </div>
+          <div class="info-container">
+            <h3 class="nominee-title">{{ nominee.name }}</h3>
+            <p class="votes-label">
+              Votes: <span>{{ nominee.score }}</span>
+            </p>
+          </div>
+          <button
+            class="btn remove-candidate"
+            @click="removeCandidate(nominee.id)"
+          >
+            Remove Candidate
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Position Selection -->
+    <div v-if="showPositionModal" class="modal-overlay">
+      <div class="modal">
+        <h3>Select Position</h3>
+        <div class="position-buttons">
+          <button
+            v-for="position in validPositions"
+            :key="position"
+            class="btn position-btn"
+            @click="addNominee(position)"
+          >
+            {{ position }}
+          </button>
+        </div>
+        <button class="btn close-modal" @click="closePositionSelectionModal">
+          Close
+        </button>
+      </div>
+    </div>
+
+    <p class="year">2024</p>
+    <p class="footer">Group 7 (iVOTE)</p>
+  </div>
+</template>
+
 <script>
 import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from "firebase/firestore";
 
@@ -129,6 +228,19 @@ export default {
     };
   },
   computed: {
+    // This computed property ensures that the positions are sorted in the desired order
+    sortedGroupedNominees() {
+      const grouped = this.groupedNominees;
+      const sorted = {};
+
+      this.validPositions.forEach(position => {
+        if (grouped[position]) {
+          sorted[position] = grouped[position];
+        }
+      });
+
+      return sorted;
+    },
     groupedNominees() {
       return this.nominees.reduce((groups, nominee) => {
         const position = nominee.position || "Others";
@@ -283,12 +395,6 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-/* Add your styles here */
-</style>
-
-
 
 
 <style scoped>
