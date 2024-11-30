@@ -14,10 +14,11 @@
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
     <h2 class="header results-title">Election Results</h2>
+
     <div class="results-container">
-      <div v-for="(candidates, position) in results" :key="position" class="position-container">
+      <div v-for="position in orderedPositions" :key="position" class="position-container">
         <h3 class="position-title">{{ position }}</h3>
-        <table class="results-table">
+        <table class="results-table" v-if="results[position]">
           <thead>
             <tr>
               <th>Candidate</th>
@@ -26,17 +27,21 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="candidate in candidates" :key="candidate.name">
+            <tr v-for="candidate in results[position]" :key="candidate.name">
               <td>{{ candidate.name }}</td>
               <td>{{ candidate.totalVotes }}</td>
               <td>
-                <div v-for="(percent, department) in candidate.departmentPercentages" :key="department">
-                  {{ department }}: {{ percent.toFixed(2) }}%
-                </div>
+                <table class="department-percentages-inner-table">
+                  <tr v-for="(percent, department) in candidate.departmentPercentages" :key="department">
+                    <td>{{ department }}</td>
+                    <td>{{ percent.toFixed(2) }}%</td>
+                  </tr>
+                </table>
               </td>
             </tr>
           </tbody>
         </table>
+        <p v-else>No data available for {{ position }}</p>
       </div>
     </div>
 
@@ -53,6 +58,25 @@ export default {
   data() {
     return {
       results: {}, // Stores the election results grouped by positions
+      orderedPositions: [
+        "PRESIDENT",
+        "VICE-PRESIDENT",
+        "SECRETARY",
+        "TREASURER",
+        "AUDITOR",
+        "BUSINESS MANAGER",
+        "PUBLIC INFORMATION OFFICER",
+        "PUBLIC RELATIONS OFFICER",
+        "CREATIVE DIRECTOR",
+        "EXECUTIVE ASSISTANT TO THE PRESIDENT",
+        "ASSISTANT SECRETARY",
+        "ASSISTANT TREASURER",
+        "ASSISTANT AUDITOR",
+        "ASSISTANT BUSINESS MANAGER",
+        "ASSISTANT CREATIVE DIRECTOR",
+        "CHIEF OF STAFF",
+        "EXECUTIVE STAFF",
+      ],
     };
   },
   async created() {
@@ -62,67 +86,82 @@ export default {
     async fetchResults() {
       const db = getFirestore();
 
-      const votesSnapshot = await getDocs(collection(db, "electionresults")); // Collection for votes
-      const nomineesSnapshot = await getDocs(collection(db, "nominees")); // Collection for nominees
+      const votesSnapshot = await getDocs(collection(db, "votes")); // Fetch votes collection
+      const groupedResults = {}; // Store results grouped by position
 
-      const departmentCounts = {};
-      const groupedResults = {};
+      // List of all departments
+      const departments = [
+        "SAS",
+        "COA",
+        "SBPA",
+        "BSIT",
+        "BSEd",
+        "BEEd",
+        "BSCE",
+        "BSArch",
+        "BSHM",
+        "BSTM",
+        "BSN",
+        "BSP",
+      ];
 
-      // Count total votes per department
+      // Track total votes per position
+      const positionVoteCounts = {};
+
+      // Group votes by position and candidate
       votesSnapshot.forEach((doc) => {
         const vote = doc.data();
-        const { department } = vote;
+        const { Candidate, Department, Position } = vote;
 
-        if (department) {
-          if (!departmentCounts[department]) {
-            departmentCounts[department] = 0;
-          }
-          departmentCounts[department] += 1;
-        }
-      });
-
-      // Initialize groupedResults with positions and nominees
-      nomineesSnapshot.forEach((doc) => {
-        const nominee = doc.data();
-        const { name, position, score } = nominee;
-
-        if (!groupedResults[position]) {
-          groupedResults[position] = [];
+        if (!groupedResults[Position]) {
+          groupedResults[Position] = [];
+          positionVoteCounts[Position] = 0;
         }
 
-        groupedResults[position].push({
-          name: name || "No Name Provided",
-          totalVotes: score || 0,
-          departmentPercentages: {}, // Will be calculated below
-        });
-      });
+        // Increment the total vote count for the position
+        positionVoteCounts[Position] += 1;
 
-      // Calculate department percentages for each nominee
-      votesSnapshot.forEach((doc) => {
-        const vote = doc.data();
-        const { candidate, department } = vote;
-
-        if (candidate && department) {
-          // Find the candidate in groupedResults
-          for (const position in groupedResults) {
-            const nominee = groupedResults[position].find((n) => n.name === candidate);
-            if (nominee) {
-              // Increment the department count for this candidate
-              if (!nominee.departmentPercentages[department]) {
-                nominee.departmentPercentages[department] = 0;
-              }
-              nominee.departmentPercentages[department] += 1;
-            }
-          }
+        // Find the candidate in the results or add them if they don't exist
+        let candidate = groupedResults[Position].find(
+          (c) => c.name === Candidate
+        );
+        if (!candidate) {
+          candidate = {
+            name: Candidate,
+            totalVotes: 0,
+            departmentPercentages: {},
+          };
+          groupedResults[Position].push(candidate);
         }
+
+        // Increment candidate's total votes and their department vote count
+        candidate.totalVotes += 1;
+        if (!candidate.departmentPercentages[Department]) {
+          candidate.departmentPercentages[Department] = 0;
+        }
+        candidate.departmentPercentages[Department] += 1;
       });
 
-      // Calculate percentages for each department
+      // Calculate percentages for each candidate and fill in missing departments
       for (const position in groupedResults) {
-        groupedResults[position].forEach((nominee) => {
-          for (const department in nominee.departmentPercentages) {
-            nominee.departmentPercentages[department] =
-              (nominee.departmentPercentages[department] / departmentCounts[department]) * 100;
+        groupedResults[position].forEach((candidate) => {
+          // Ensure all departments are included
+          departments.forEach((department) => {
+            if (!candidate.departmentPercentages[department]) {
+              candidate.departmentPercentages[department] = 0;
+            }
+          });
+
+          // Calculate department percentages based on total position votes
+          for (const department in candidate.departmentPercentages) {
+            if (positionVoteCounts[position] > 0) {
+              candidate.departmentPercentages[department] =
+                (candidate.departmentPercentages[department] /
+                  positionVoteCounts[position]) *
+                100;
+            } else {
+              candidate.departmentPercentages[department] = 0;
+            }
           }
         });
       }
@@ -134,6 +173,12 @@ export default {
 </script>
 
 <style scoped>
+/* Your existing styles */
+</style>
+
+
+<style scoped>
+/* Your existing styles */
 .container {
   width: 100%;
   min-height: 100vh;
@@ -193,6 +238,22 @@ export default {
 
 .results-table tr:hover {
   background-color: #ddd;
+}
+
+.department-percentages-inner-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.department-percentages-inner-table td {
+  border: 1px solid #ddd;
+  text-align: left;
+  padding: 5px;
+  font-size: 12px;
+}
+
+.department-percentages-inner-table tr:nth-child(even) {
+  background-color: #f9f9f9;
 }
 
 .navbar {

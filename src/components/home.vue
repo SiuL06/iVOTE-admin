@@ -5,7 +5,9 @@
       <nav>
         <ul>
           <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
-          <li><RouterLink to="/electionresults" class="btn">Election Results</RouterLink></li>
+          <li>
+            <RouterLink to="/electionresults" class="btn">Election Results</RouterLink>
+          </li>
         </ul>
       </nav>
     </header>
@@ -31,13 +33,13 @@
     <!-- Positions and Nominees -->
     <div
       class="position-container"
-      v-for="(nominees, position) in groupedNominees"
-      :key="position"
+      v-for="position in orderedGroupedNominees"
+      :key="position.name"
     >
-      <h2 class="position-title">{{ position }}</h2>
+      <h2 class="position-title">{{ position.name }}</h2>
       <div class="nominees-row">
         <div
-          v-for="nominee in nominees"
+          v-for="nominee in position.nominees"
           :key="nominee.id"
           class="card id-card"
         >
@@ -58,7 +60,6 @@
           </div>
           <div class="info-container">
             <h3 class="nominee-title">{{ nominee.name }}</h3>
-            <p class="department-label">Department: {{ nominee.department }}</p>
             <p class="votes-label">
               Votes: <span>{{ nominee.score }}</span>
             </p>
@@ -99,8 +100,12 @@
 </template>
 
 <script>
-import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, where } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; // Import Firebase Authentication
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  addDoc,
+} from "firebase/firestore";
 
 export default {
   name: "HomePage",
@@ -109,14 +114,25 @@ export default {
       nominees: [],
       showPositionModal: false,
       validPositions: [
-        "PRESIDENT", "VICE-PRESIDENT", "SECRETARY", "TREASURER", "AUDITOR", "BUSINESS MANAGER",
-        "PUBLIC INFORMATION OFFICER", "PUBLIC RELATIONS OFFICER", "CREATIVE DIRECTOR",
-        "EXECUTIVE ASSISTANT TO THE PRESIDENT", "ASSISTANT SECRETARY", "ASSISTANT TREASURER",
-        "ASSISTANT AUDITOR", "ASSISTANT BUSINESS MANAGER", "ASSISTANT CREATIVE DIRECTOR",
-        "CHIEF OF STAFF", "EXECUTIVE STAFF",
+        "PRESIDENT",
+        "VICE-PRESIDENT",
+        "SECRETARY",
+        "TREASURER",
+        "AUDITOR",
+        "BUSINESS MANAGER",
+        "PUBLIC INFORMATION OFFICER",
+        "PUBLIC RELATIONS OFFICER",
+        "CREATIVE DIRECTOR",
+        "EXECUTIVE ASSISTANT TO THE PRESIDENT",
+        "ASSISTANT SECRETARY",
+        "ASSISTANT TREASURER",
+        "ASSISTANT AUDITOR",
+        "ASSISTANT BUSINESS MANAGER",
+        "ASSISTANT CREATIVE DIRECTOR",
+        "CHIEF OF STAFF",
+        "EXECUTIVE STAFF",
       ],
       isSubmitting: false,
-      userDepartment: "", // Will hold the department of the logged-in user
     };
   },
   computed: {
@@ -128,6 +144,14 @@ export default {
         return groups;
       }, {});
     },
+    orderedGroupedNominees() {
+      return this.validPositions
+        .filter((position) => this.groupedNominees[position])
+        .map((position) => ({
+          name: position,
+          nominees: this.groupedNominees[position],
+        }));
+    },
   },
   methods: {
     openPositionSelectionModal() {
@@ -136,29 +160,26 @@ export default {
     closePositionSelectionModal() {
       this.showPositionModal = false;
     },
-    // Fetch department from users collection for the logged-in user
-    async fetchUserDepartment() {
+    async fetchNominees() {
       const db = getFirestore();
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (user) {
-        const q = query(collection(db, "users"), where("email", "==", user.email));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((doc) => {
-          this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
-        });
+      try {
+        const snapshot = await getDocs(collection(db, "nominees"));
+        this.nominees = snapshot.docs.map((doc) => ({
+          ...doc.data(),
+          id: doc.id,
+        }));
+      } catch (error) {
+        console.error("Error fetching nominees:", error);
       }
     },
     async addNominee(position) {
       const name = prompt("Enter nominee's name:");
       if (!name) return;
 
-      // Use the department fetched from the current logged-in user
       const nominee = {
         name,
         position,
-        department: this.userDepartment, // Assign department from logged-in user
+        department: "N/A", // Replace or fetch dynamically if necessary
         score: 0,
         photo: null,
       };
@@ -174,128 +195,18 @@ export default {
         this.closePositionSelectionModal();
       }
     },
-    async addPhoto(nomineeId) {
-      const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
-      if (nomineeIndex === -1) {
-        console.error("Nominee not found");
-        return;
-      }
-
-      const photoFile = await this.uploadPhoto();
-      if (photoFile) {
-        this.nominees[nomineeIndex].photo = photoFile;
-
-        const db = getFirestore();
-        const nomineeRef = doc(db, "nominees", nomineeId);
-        try {
-          await updateDoc(nomineeRef, { photo: photoFile });
-        } catch (error) {
-          console.error("Error updating photo in Firestore:", error);
-        }
-      }
-    },
-    async uploadPhoto() {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-
-      return new Promise((resolve) => {
-        input.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = () => {
-              resolve(reader.result);
-            };
-            reader.readAsDataURL(file);
-          } else {
-            resolve(null);
-          }
-        };
-        input.click();
-      });
-    },
-    async removeCandidate(nomineeId) {
-      const db = getFirestore();
-      try {
-        await deleteDoc(doc(db, "nominees", nomineeId));
-        this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
-      } catch (error) {
-        console.error("Error removing nominee:", error);
-      }
-    },
-    async resetAndRemoveNominees() {
-      const db = getFirestore();
-      try {
-        const snapshot = await getDocs(collection(db, "nominees"));
-        const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
-        await Promise.all(deletePromises);
-
-        this.nominees = [];
-        alert("All nominees have been removed.");
-      } catch (error) {
-        console.error("Error removing nominees:", error);
-      }
-    },
-    async fetchNominees() {
-      const db = getFirestore();
-      try {
-        const snapshot = await getDocs(collection(db, "nominees"));
-        this.nominees = snapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-        }));
-      } catch (error) {
-        console.error("Error fetching nominees:", error);
-      }
-    },
-    async submitVotes() {
-      if (this.nominees.length === 0) {
-        alert("No nominees to submit votes for.");
-        return;
-      }
-
-      this.isSubmitting = true;
-
-      try {
-        const db = getFirestore();
-        const resultsCollection = collection(db, "electionresults");
-
-        const votes = this.nominees.map((nominee) => ({
-          name: nominee.name,
-          position: nominee.position,
-          votes: nominee.score,
-          department: nominee.department, // Add department to the vote
-          timestamp: new Date(),
-        }));
-
-        const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
-        await Promise.all(savePromises);
-
-        alert("Votes have been successfully saved to election results!");
-        console.log("Election results saved:", votes);
-      } catch (error) {
-        console.error("Error saving election results:", error);
-        alert("An error occurred while saving election results. Please try again.");
-      } finally {
-        this.isSubmitting = false;
-      }
-    },
-    logout() {
-      localStorage.removeItem("authToken");
-      this.$router.push("/");
-    },
   },
-  mounted() {
-    this.fetchNominees();
-    this.fetchUserDepartment(); // Fetch department on component mount
+  async mounted() {
+    await this.fetchNominees();
   },
 };
 </script>
 
+
 <style scoped>
-/* Add your styles here */
+/* Your existing styles */
 </style>
+
 
 <style scoped>
 .modal-overlay {
