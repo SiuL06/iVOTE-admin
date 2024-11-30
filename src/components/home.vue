@@ -5,9 +5,7 @@
       <nav>
         <ul>
           <li><RouterLink to="/home" class="btn">Home</RouterLink></li>
-          <li>
-            <RouterLink to="/electionresults" class="btn">Election Results</RouterLink>
-          </li>
+          <li><RouterLink to="/electionresults" class="btn">Election Results</RouterLink></li>
         </ul>
       </nav>
     </header>
@@ -16,60 +14,28 @@
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
     <div class="buttons-container">
-      <button class="btn add-nominee" @click="openPositionSelectionModal">
-        Add Nominee
-      </button>
+      <button class="btn add-nominee" @click="openPositionSelectionModal">Add Nominee</button>
       <button class="btn reset" @click="resetAndRemoveNominees">Reset</button>
-      <button
-        class="btn submit-votes"
-        @click="submitVotes"
-        :disabled="nominees.length === 0 || isSubmitting"
-      >
+      <button class="btn submit-votes" @click="submitVotes" :disabled="nominees.length === 0 || isSubmitting">
         Submit Votes
       </button>
       <button class="btn logout" @click="logout">Logout</button>
     </div>
 
     <!-- Positions and Nominees -->
-    <div
-      class="position-container"
-      v-for="position in orderedGroupedNominees"
-      :key="position.name"
-    >
+    <div class="position-container" v-for="position in orderedGroupedNominees" :key="position.name">
       <h2 class="position-title">{{ position.name }}</h2>
       <div class="nominees-row">
-        <div
-          v-for="nominee in position.nominees"
-          :key="nominee.id"
-          class="card id-card"
-        >
+        <div v-for="nominee in position.nominees" :key="nominee.id" class="card id-card">
           <div class="photo-container">
-            <img
-              v-if="nominee.photo"
-              :src="nominee.photo"
-              alt="Nominee Photo"
-              class="nominee-photo"
-            />
-            <button
-              v-else
-              class="btn add-photo"
-              @click="addPhoto(nominee.id)"
-            >
-              Add Photo
-            </button>
+            <img v-if="nominee.photo" :src="nominee.photo" alt="Nominee Photo" class="nominee-photo" />
+            <input v-else type="file" accept="image/*" @change="handleFileUpload($event, nominee.id)" />
           </div>
           <div class="info-container">
             <h3 class="nominee-title">{{ nominee.name }}</h3>
-            <p class="votes-label">
-              Votes: <span>{{ nominee.score }}</span>
-            </p>
+            <p class="votes-label">Votes: <span>{{ nominee.score }}</span></p>
           </div>
-          <button
-            class="btn remove-candidate"
-            @click="removeCandidate(nominee.id)"
-          >
-            Remove Candidate
-          </button>
+          <button class="btn remove-candidate" @click="removeCandidate(nominee.id)">Remove Candidate</button>
         </div>
       </div>
     </div>
@@ -79,18 +45,11 @@
       <div class="modal">
         <h3>Select Position</h3>
         <div class="position-buttons">
-          <button
-            v-for="position in validPositions"
-            :key="position"
-            class="btn position-btn"
-            @click="addNominee(position)"
-          >
+          <button v-for="position in validPositions" :key="position" class="btn position-btn" @click="addNominee(position)">
             {{ position }}
           </button>
         </div>
-        <button class="btn close-modal" @click="closePositionSelectionModal">
-          Close
-        </button>
+        <button class="btn close-modal" @click="closePositionSelectionModal">Close</button>
       </div>
     </div>
 
@@ -109,6 +68,7 @@ import {
   doc,
   updateDoc,
 } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export default {
   name: "HomePage",
@@ -151,7 +111,7 @@ export default {
     },
     orderedGroupedNominees() {
       return this.validPositions
-        .filter((position) => this.groupedNominees[position])
+        .filter((position) => this.groupedNominees[position]?.length > 0)
         .map((position) => ({
           name: position,
           nominees: this.groupedNominees[position],
@@ -200,27 +160,32 @@ export default {
         this.closePositionSelectionModal();
       }
     },
-    async addPhoto(nomineeId) {
-      const photoUrl = prompt("Enter the URL of the nominee's photo:");
-      if (!photoUrl) return;
+    async handleFileUpload(event, nomineeId) {
+      const file = event.target.files[0];
+      if (!file) return;
 
-      const db = getFirestore();
+      const storage = getStorage();
+      const storageRef = ref(storage, `nominee-photos/${nomineeId}-${file.name}`);
+
       try {
+        await uploadBytes(storageRef, file);
+        const photoUrl = await getDownloadURL(storageRef);
+
+        const db = getFirestore();
         await updateDoc(doc(db, "nominees", nomineeId), { photo: photoUrl });
+
         const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
         if (nomineeIndex !== -1) {
           this.nominees[nomineeIndex].photo = photoUrl;
         }
         alert("Photo added successfully!");
       } catch (error) {
-        console.error("Error adding photo:", error);
-        alert("Failed to add photo. Please try again.");
+        console.error("Error uploading photo:", error);
+        alert("Failed to upload photo. Please try again.");
       }
     },
     async removeCandidate(nomineeId) {
-      const confirmRemove = confirm(
-        "Are you sure you want to remove this candidate? This action cannot be undone."
-      );
+      const confirmRemove = confirm("Are you sure you want to remove this candidate?");
       if (!confirmRemove) return;
 
       const db = getFirestore();
@@ -234,9 +199,7 @@ export default {
       }
     },
     async resetAndRemoveNominees() {
-      const confirmReset = confirm(
-        "Are you sure you want to reset all nominees? This action cannot be undone."
-      );
+      const confirmReset = confirm("Are you sure you want to reset all nominees?");
       if (!confirmReset) return;
 
       const db = getFirestore();
@@ -252,9 +215,7 @@ export default {
       }
     },
     async submitVotes() {
-      const confirmSubmit = confirm(
-        "Are you sure you want to submit the votes? This action cannot be undone."
-      );
+      const confirmSubmit = confirm("Are you sure you want to submit the votes?");
       if (!confirmSubmit) return;
 
       this.isSubmitting = true;
@@ -290,8 +251,7 @@ export default {
   async mounted() {
     await this.fetchNominees();
     this.userVoucher = sessionStorage.getItem("voucher") || "";
-    this.userDepartment =
-      JSON.parse(sessionStorage.getItem("user"))?.Department || "";
+    this.userDepartment = JSON.parse(sessionStorage.getItem("user"))?.Department || "";
   },
 };
 </script>
@@ -299,6 +259,7 @@ export default {
 <style scoped>
 /* Add your styles here */
 </style>
+
 
 
 
