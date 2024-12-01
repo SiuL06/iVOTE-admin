@@ -178,28 +178,24 @@ export default {
     const db = getFirestore();
     const resultsCollection = collection(db, "electionresults");
 
-    // Fetch votes to get the department and voucher of the voter
-    const votesQuery = query(collection(db, "votes"));
-    const votesSnapshot = await getDocs(votesQuery);
-
-    // Extract department and voucher information for each vote
+    // Map through nominees and prepare the vote data
     const votes = this.nominees.map((nominee) => {
-      const department = votesSnapshot.docs
-        .filter(doc => doc.data().Candidate === nominee.name)
-        .map(doc => doc.data().Department)[0]; // Get the department of the voter
+      let departmentVotes = {};
+      // Set initial department votes to 0 for all departments
+      this.validDepartments.forEach(department => {
+        departmentVotes[department] = 0;
+      });
 
-      const voucher = votesSnapshot.docs
-        .filter(doc => doc.data().Candidate === nominee.name)
-        .map(doc => doc.data().Voucher)[0]; // Get the voucher of the voter
+      // Add the department vote count for this nominee
+      departmentVotes[this.userDepartment] = nominee.score;
 
       return {
         name: nominee.name,
         position: nominee.position,
         votes: nominee.score,
-        department: department || "",  // Fetch department from votes or use default
-        voucher: voucher || "",        // Fetch voucher from votes or use default
+        voucher: this.userVoucher, // Add voucher from logged-in user
         timestamp: new Date(),
-        departmentVoteScore: nominee.score,  // Include score for the department's vote
+        departments: departmentVotes,  // Store department-wise vote counts
       };
     });
 
@@ -218,6 +214,7 @@ export default {
   } finally {
     this.isSubmitting = false;
   }
+
 
 
     },
