@@ -98,7 +98,7 @@
 </template>
 
 <script>
-import { getFirestore, collection, getDocs, addDoc, query, where } from "firebase/firestore";
+import { getFirestore, collection, getDocs, addDoc, query, where, doc, updateDoc, deleteDoc, } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 export default {
@@ -236,6 +236,81 @@ export default {
         this.closePositionSelectionModal();
       }
     },
+
+    async addPhoto(nomineeId) {
+      const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
+      if (nomineeIndex === -1) {
+        console.error('Nominee not found');
+        return;
+      }
+
+      const photoFile = await this.uploadPhoto();
+      if (photoFile) {
+        this.nominees[nomineeIndex].photo = photoFile;
+
+        // Update Firestore with the photo URL
+        const db = getFirestore();
+        const nomineeRef = doc(db, 'nominees', nomineeId);
+        try {
+          await updateDoc(nomineeRef, { photo: photoFile });
+          console.log('Photo updated successfully in Firestore.');
+        } catch (error) {
+          console.error('Error updating photo in Firestore:', error);
+        }
+      } else {
+        console.warn('Photo upload failed or was canceled');
+      }
+    },
+    async uploadPhoto() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+
+      return new Promise((resolve) => {
+        input.onchange = async (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve(reader.result); // Return base64 data URL
+            };
+            reader.readAsDataURL(file);
+          } else {
+            resolve(null);
+          }
+        };
+        input.click();
+      });
+    },
+    async removeCandidate(nomineeId) {
+      const db = getFirestore();
+      try {
+        // Remove nominee from Firestore
+        await deleteDoc(doc(db, 'nominees', nomineeId));
+
+        // Remove nominee from local state
+        this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
+        alert('Nominee removed successfully!');
+      } catch (error) {
+        console.error('Error removing nominee:', error);
+      }
+    },
+    async resetAndRemoveNominees() {
+      const db = getFirestore();
+      try {
+        // Fetch all nominees and delete them from Firestore
+        const snapshot = await getDocs(collection(db, 'nominees'));
+        const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+
+        // Clear the local state
+        this.nominees = [];
+        alert('All nominees have been removed.');
+      } catch (error) {
+        console.error('Error removing nominees:', error);
+      }
+    },
+
     logout() {
       localStorage.removeItem("authToken");
       this.$router.push("/");
