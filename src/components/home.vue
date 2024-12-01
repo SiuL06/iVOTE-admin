@@ -151,20 +151,18 @@ export default {
     },
     // Fetch the logged-in user's department and voucher from Firestore
     async fetchUserDetails() {
-  const db = getFirestore();
-  const auth = getAuth();
-  const user = auth.currentUser;
+      const db = getFirestore();
+      const auth = getAuth();
+      const user = auth.currentUser;
 
-  if (user) {
-    const q = query(collection(db, "users"), where("email", "==", user.email));
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((doc) => {
-      this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
-      this.userVoucher = doc.data().Voucher; // Fetch the voucher of the logged-in user
-      console.log("Fetched Department: ", this.userDepartment);
-      console.log("Fetched Voucher: ", this.userVoucher);
-    });
-  }
+      if (user) {
+        const q = query(collection(db, "users"), where("email", "==", user.email));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((doc) => {
+          this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
+          this.userVoucher = doc.data().Voucher; // Fetch the voucher of the logged-in user
+        });
+      }
     },
     async submitVotes() {
   if (this.nominees.length === 0) {
@@ -178,24 +176,47 @@ export default {
     const db = getFirestore();
     const resultsCollection = collection(db, "electionresults");
 
-    // Map through nominees and prepare the vote data
-    const votes = this.nominees.map((nominee) => {
-      let departmentVotes = {};
-      // Set initial department votes to 0 for all departments
-      this.validDepartments.forEach(department => {
-        departmentVotes[department] = 0;
-      });
+    // Fetch votes to get the department and voucher of the voter
+    const votesQuery = query(collection(db, "votes"));
+    const votesSnapshot = await getDocs(votesQuery);
 
-      // Add the department vote count for this nominee
-      departmentVotes[this.userDepartment] = nominee.score;
+    // Create a map to keep track of votes per nominee
+    const nomineeVoteMap = this.nominees.reduce((acc, nominee) => {
+      acc[nominee.name] = {
+        votes: 0,
+        departmentsVoted: new Set(),
+        vouchersVoted: new Set(),
+      };
+      return acc;
+    }, {});
 
+    // Process the votes to count the total votes for each nominee and record the departments and vouchers
+    votesSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      const nomineeName = data.Candidate;
+      const department = data.Department;
+      const voucher = data.Voucher;
+
+      // Check if the nominee exists in the list
+      if (nomineeVoteMap[nomineeName]) {
+        // Increment the vote count for the nominee
+        nomineeVoteMap[nomineeName].votes += 1;
+        // Record the department and voucher
+        nomineeVoteMap[nomineeName].departmentsVoted.add(department);
+        nomineeVoteMap[nomineeName].vouchersVoted.add(voucher);
+      }
+    });
+
+    // Prepare the data to be saved in Firestore
+    const votes = Object.keys(nomineeVoteMap).map((nomineeName) => {
+      const nomineeData = nomineeVoteMap[nomineeName];
       return {
-        name: nominee.name,
-        position: nominee.position,
-        votes: nominee.score,
-        voucher: this.userVoucher, // Add voucher from logged-in user
+        name: nomineeName,
+        position: this.nominees.find(nominee => nominee.name === nomineeName).position,
+        votes: nomineeData.votes,
+        departmentsVoted: Array.from(nomineeData.departmentsVoted).join(", "),  // Convert Set to comma-separated string
+        vouchersVoted: Array.from(nomineeData.vouchersVoted).join(", "),  // Convert Set to comma-separated string
         timestamp: new Date(),
-        departments: departmentVotes,  // Store department-wise vote counts
       };
     });
 
@@ -203,7 +224,7 @@ export default {
     const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
     await Promise.all(savePromises);
 
-    alert("Votes have been successfully saved to election results!");
+    alert("Votes have been successfully counted and saved to election results!");
     console.log("Election results saved:", votes);
 
     // After saving, fetch the election results and update the results page
@@ -214,7 +235,6 @@ export default {
   } finally {
     this.isSubmitting = false;
   }
-
 
 
     },
