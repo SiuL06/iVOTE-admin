@@ -16,6 +16,9 @@
     <!-- Moved Submit Votes Button here -->
     <button class="btn submit-votes" @click="displayWinners">Submit Votes</button>
 
+    <!-- Print as PDF Button -->
+    <button class="btn print-pdf" @click="printAsPDF">Print as PDF</button>
+
     <h2 class="header results-title">Election Results</h2>
 
     <div class="results-container">
@@ -193,10 +196,14 @@ export default {
       // You can also choose to log winners to the console if needed
       console.log("Winners:", this.winners);
     },
+
+    // Method to print the results as PDF (trigger the print dialog)
+    printAsPDF() {
+      window.print();  // This will trigger the print dialog of the browser
+    }
   },
 };
 </script>
-
 
 <style scoped>
 /* Submit Votes Button */
@@ -212,6 +219,21 @@ export default {
 
 .submit-votes:hover {
   background-color: #0056b3;
+}
+
+/* Print as PDF Button */
+.print-pdf {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.print-pdf:hover {
+  background-color: #218838;
 }
 
 /* General Container Styles */
