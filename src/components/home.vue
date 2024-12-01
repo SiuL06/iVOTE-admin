@@ -151,56 +151,75 @@ export default {
     },
     // Fetch the logged-in user's department and voucher from Firestore
     async fetchUserDetails() {
-      const db = getFirestore();
-      const auth = getAuth();
-      const user = auth.currentUser;
+  const db = getFirestore();
+  const auth = getAuth();
+  const user = auth.currentUser;
 
-      if (user) {
-        const q = query(collection(db, "users"), where("email", "==", user.email));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((doc) => {
-          this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
-          this.userVoucher = doc.data().Voucher; // Fetch the voucher of the logged-in user
-        });
-      }
+  if (user) {
+    const q = query(collection(db, "users"), where("email", "==", user.email));
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach((doc) => {
+      this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
+      this.userVoucher = doc.data().Voucher; // Fetch the voucher of the logged-in user
+      console.log("Fetched Department: ", this.userDepartment);
+      console.log("Fetched Voucher: ", this.userVoucher);
+    });
+  }
     },
     async submitVotes() {
-      if (this.nominees.length === 0) {
-        alert("No nominees to submit votes for.");
-        return;
-      }
+  if (this.nominees.length === 0) {
+    alert("No nominees to submit votes for.");
+    return;
+  }
 
-      this.isSubmitting = true;
+  this.isSubmitting = true;
 
-      try {
-        const db = getFirestore();
-        const resultsCollection = collection(db, "electionresults");
+  try {
+    const db = getFirestore();
+    const resultsCollection = collection(db, "electionresults");
 
-        // Map through nominees and prepare the vote data
-        const votes = this.nominees.map((nominee) => ({
-          name: nominee.name,
-          position: nominee.position,
-          votes: nominee.score,
-          department: this.userDepartment,  // Add department from logged-in user
-          voucher: this.userVoucher, // Add voucher from logged-in user
-          timestamp: new Date(),
-        }));
+    // Fetch votes to get the department and voucher of the voter
+    const votesQuery = query(collection(db, "votes"));
+    const votesSnapshot = await getDocs(votesQuery);
 
-        // Save each vote to Firestore
-        const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
-        await Promise.all(savePromises);
+    // Extract department and voucher information for each vote
+    const votes = this.nominees.map((nominee) => {
+      const department = votesSnapshot.docs
+        .filter(doc => doc.data().Candidate === nominee.name)
+        .map(doc => doc.data().Department)[0]; // Get the department of the voter
 
-        alert("Votes have been successfully saved to election results!");
-        console.log("Election results saved:", votes);
+      const voucher = votesSnapshot.docs
+        .filter(doc => doc.data().Candidate === nominee.name)
+        .map(doc => doc.data().Voucher)[0]; // Get the voucher of the voter
 
-        // After saving, fetch the election results and update the results page
-        this.$router.push("/electionresults");  // Redirect to election results page
-      } catch (error) {
-        console.error("Error saving election results:", error);
-        alert("An error occurred while saving election results. Please try again.");
-      } finally {
-        this.isSubmitting = false;
-      }
+      return {
+        name: nominee.name,
+        position: nominee.position,
+        votes: nominee.score,
+        department: department || "",  // Fetch department from votes or use default
+        voucher: voucher || "",        // Fetch voucher from votes or use default
+        timestamp: new Date(),
+        departmentVoteScore: nominee.score,  // Include score for the department's vote
+      };
+    });
+
+    // Save each vote to Firestore
+    const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
+    await Promise.all(savePromises);
+
+    alert("Votes have been successfully saved to election results!");
+    console.log("Election results saved:", votes);
+
+    // After saving, fetch the election results and update the results page
+    this.$router.push("/electionresults");  // Redirect to election results page
+  } catch (error) {
+    console.error("Error saving election results:", error);
+    alert("An error occurred while saving election results. Please try again.");
+  } finally {
+    this.isSubmitting = false;
+  }
+
+
     },
     async fetchNominees() {
       const db = getFirestore();

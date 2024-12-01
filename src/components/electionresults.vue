@@ -23,9 +23,15 @@
 
     <div class="results-container">
       <div v-for="position in orderedPositions" :key="position" class="position-container">
-        <h3 class="position-title">{{ position }}
-          <span v-if="winners[position]"> - WINNER: {{ winners[position].name }}</span>
-        </h3>
+        <h3 class="position-title">
+  {{ position }}
+  <span v-if="winners[position]">
+    -
+    <strong>{{ winners[position].status }}:</strong>
+    {{ winners[position].candidates }}
+  </span>
+</h3>
+
 
         <table class="results-table" v-if="results[position]">
           <thead>
@@ -173,37 +179,64 @@ export default {
       }
     },
 
-    // Method to display the winners after submitting votes and save all candidates' votes to Firestore
+    // Method to display the winners after submitting votes
     async displayWinners() {
       const winners = {};
 
       // Calculate winners
       for (const position in this.results) {
         const candidates = this.results[position];
-        const winner = candidates.reduce((max, candidate) =>
-          candidate.totalVotes > max.totalVotes ? candidate : max
-        );
+        const maxVotes = Math.max(...candidates.map(candidate => candidate.totalVotes));
 
-        winners[position] = winner;
+        // Filter candidates with the maximum votes (in case of a tie)
+        const tiedCandidates = candidates.filter(candidate => candidate.totalVotes === maxVotes);
+
+        if (tiedCandidates.length > 1) {
+          winners[position] = {
+            status: 'Tied',
+            candidates: tiedCandidates.map(candidate => candidate.name).join(', '),
+          };
+        } else {
+          winners[position] = {
+            status: 'Winner',
+            candidates: tiedCandidates[0].name,  // Display the winner's name
+          };
+        }
       }
 
       // Update the winners data
       this.winners = winners;
 
-      // Display a message with the winners
-      alert("Winners have been calculated and displayed!");
+      // Display the winners or ties
+      alert(this.formatWinnersMessage(winners));
 
       // You can also choose to log winners to the console if needed
       console.log("Winners:", this.winners);
+    },
+
+    // Helper method to format the winner/tied message
+    formatWinnersMessage(winners) {
+      let message = '';
+      for (const position in winners) {
+        const winner = winners[position];
+        if (winner.status === 'Tied') {
+          message += `${position}: Tied - ${winner.candidates}\n`;
+        } else {
+          message += `${position}: Winner - ${winner.candidates}\n`;
+        }
+      }
+      return message;
     },
 
     // Method to print the results as PDF (trigger the print dialog)
     printAsPDF() {
       window.print();  // This will trigger the print dialog of the browser
     }
-  },
+  }
 };
 </script>
+
+
 
 <style scoped>
 /* Submit Votes Button */
