@@ -108,8 +108,9 @@ export default {
 
         // List of all departments
         const departments = [
-          "SAS", "COA", "SBPA", "BSIT", "BSEd", "BEEd", "BSCE", "BSArch",
-          "BSHM", "BSTM", "BSN", "BSP",
+          "AAA", "BACC", "BATAS", "BHS-PHS", "CDW", "CHARMS", "CRCYC", "CREATE",
+      "ICPEP", "INA", "JPIA", "JPPhA", "LEAD", "LTSP", "MCSA", "NSC", "PICE",
+      "PIIE", "PsychSoc", "SSITE", "VE", "UASAO",
         ];
 
         // Track total votes per position
