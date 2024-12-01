@@ -57,7 +57,7 @@
 </template>
 
 <script>
-import { getFirestore, collection, getDocs, addDoc } from "firebase/firestore";
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 
 export default {
   name: "ElectionResults",
@@ -187,44 +187,16 @@ export default {
       // Update the winners data
       this.winners = winners;
 
-      // Now save the results (all candidates' votes) to Firestore
-      await this.saveElectionResults();
-    },
+      // Display a message with the winners
+      alert("Winners have been calculated and displayed!");
 
-    // Save all election results (all candidates' votes) to Firestore
-    async saveElectionResults() {
-      const db = getFirestore();
-      const resultsCollection = collection(db, "electionresults");
-
-      try {
-        // Loop through each position and save every candidate's votes along with department percentages
-        for (const position in this.results) {
-          const candidates = this.results[position];
-
-          for (const candidate of candidates) {
-            const electionResult = {
-              position,
-              name: candidate.name,
-              totalVotes: candidate.totalVotes,
-              departmentPercentages: candidate.departmentPercentages,
-              timestamp: new Date(),
-            };
-
-            // Save each result to Firestore
-            await addDoc(resultsCollection, electionResult);
-          }
-        }
-
-        alert("Votes have been successfully saved to the election results!");
-        console.log("Election results saved:", this.results);
-      } catch (error) {
-        console.error("Error saving election results: ", error);
-        alert("An error occurred while saving election results. Please try again.");
-      }
+      // You can also choose to log winners to the console if needed
+      console.log("Winners:", this.winners);
     },
   },
 };
 </script>
+
 
 <style scoped>
 /* Submit Votes Button */
