@@ -98,7 +98,7 @@
 </template>
 
 <script>
-import { getFirestore, collection, getDocs, addDoc, query, where, doc, updateDoc, deleteDoc, } from "firebase/firestore";
+import { getFirestore, collection, getDocs, addDoc, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 export default {
@@ -144,10 +144,10 @@ export default {
   },
   methods: {
     openPositionSelectionModal() {
-      this.showPositionModal = true;
+      this.showPositionModal = true; // Open modal
     },
     closePositionSelectionModal() {
-      this.showPositionSelectionModal = false;
+      this.showPositionModal = false; // Close modal
     },
     // Fetch the logged-in user's department and voucher from Firestore
     async fetchUserDetails() {
@@ -322,6 +322,7 @@ export default {
   },
 };
 </script>
+
 
 
 
