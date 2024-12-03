@@ -14,7 +14,7 @@
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
     <!-- Moved Submit Votes Button here -->
-    <button class="btn submit-votes" @click="displayWinners">Submit Votes</button>
+    <button class="btn submit-votes" @click="displayWinners">Display Results</button>
 
     <!-- Print as PDF Button -->
     <button class="btn print-pdf" @click="printAsPDF">Print as PDF</button>

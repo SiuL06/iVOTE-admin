@@ -18,13 +18,6 @@
         Add Nominee
       </button>
       <button class="btn reset" @click="resetAndRemoveNominees">Reset</button>
-      <button
-        class="btn submit-votes"
-        @click="submitVotes"
-        :disabled="nominees.length === 0 || isSubmitting"
-      >
-        Submit Votes
-      </button>
       <button class="btn logout" @click="logout">Logout</button>
     </div>
 
