@@ -51,9 +51,6 @@
           </div>
           <div class="info-container">
             <h3 class="nominee-title">{{ nominee.name }}</h3>
-            <p class="votes-label">
-              Votes: <span>{{ nominee.score }}</span>
-            </p>
           </div>
           <button
             class="btn remove-candidate"
