@@ -32,7 +32,6 @@
         <label for="privacyPolicy">I agree to the Privacy Policy</label>
       </div>
       <button class="login-button" @click="handleLogin">Login</button>
-      <a href="#" class="register-link" @click="navigateToRegister">Register</a>
     </div>
   </div>
 </template>

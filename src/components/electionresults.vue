@@ -13,10 +13,7 @@
     <img src="@/assets/ivotelogo.png" alt="Logo" class="logo" />
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
-    <!-- Moved Submit Votes Button here -->
     <button class="btn submit-votes" @click="displayWinners">Display Results</button>
-
-    <!-- Print as PDF Button -->
     <button class="btn print-pdf" @click="printAsPDF">Print as PDF</button>
 
     <h2 class="header results-title">Election Results</h2>
@@ -24,14 +21,13 @@
     <div class="results-container">
       <div v-for="position in orderedPositions" :key="position" class="position-container">
         <h3 class="position-title">
-  {{ position }}
-  <span v-if="winners[position]">
-    -
-    <strong>{{ winners[position].status }}:</strong>
-    {{ winners[position].candidates }}
-  </span>
-</h3>
-
+          {{ position }}
+          <span v-if="winners[position]">
+            -
+            <strong>{{ winners[position].status }}:</strong>
+            {{ winners[position].candidates }}
+          </span>
+        </h3>
 
         <table class="results-table" v-if="results[position]">
           <thead>
@@ -43,7 +39,10 @@
           </thead>
           <tbody>
             <tr v-for="candidate in results[position]" :key="candidate.name">
-              <td>{{ candidate.name }}</td>
+              <td>
+                <img :src="candidate.photo" alt="Candidate Photo" class="candidate-photo" />
+                {{ candidate.name }}
+              </td>
               <td>{{ candidate.totalVotes }}</td>
               <td>
                 <table class="department-percentages-inner-table">
@@ -103,20 +102,23 @@ export default {
       const db = getFirestore();
 
       try {
-        const votesSnapshot = await getDocs(collection(db, "votes")); // Fetch votes collection
-        const groupedResults = {}; // Store results grouped by position
+        const votesSnapshot = await getDocs(collection(db, "votes"));
+        const nomineesSnapshot = await getDocs(collection(db, "nominees"));
 
-        // List of all departments
+        const nomineesData = {};
+        nomineesSnapshot.forEach((doc) => {
+          const nominee = doc.data();
+          nomineesData[nominee.name] = nominee.photo; // Map candidate name to photo
+        });
+
+        const groupedResults = {};
         const departments = [
           "AAA", "BACC", "BATAS", "BHS-PHS", "CDW", "CHARMS", "CRCYC", "CREATE",
-      "ICPEP", "INA", "JPIA", "JPPhA", "LEAD", "LTSP", "MCSA", "NSC", "PICE",
-      "PIIE", "PsychSoc", "SSITE", "VE", "UASAO",
+          "ICPEP", "INA", "JPIA", "JPPhA", "LEAD", "LTSP", "MCSA", "NSC", "PICE",
+          "PIIE", "PsychSoc", "SSITE", "VE", "UASAO",
         ];
-
-        // Track total votes per position
         const positionVoteCounts = {};
 
-        // Group votes by position and candidate
         votesSnapshot.forEach((doc) => {
           const vote = doc.data();
           const { Candidate, Department, Position } = vote;
@@ -126,10 +128,8 @@ export default {
             positionVoteCounts[Position] = 0;
           }
 
-          // Increment the total vote count for the position
           positionVoteCounts[Position] += 1;
 
-          // Find the candidate in the results or add them if they don't exist
           let candidate = groupedResults[Position].find(
             (c) => c.name === Candidate
           );
@@ -137,12 +137,12 @@ export default {
             candidate = {
               name: Candidate,
               totalVotes: 0,
+              photo: nomineesData[Candidate] || "", // Add photo
               departmentPercentages: {},
             };
             groupedResults[Position].push(candidate);
           }
 
-          // Increment candidate's total votes and their department vote count
           candidate.totalVotes += 1;
           if (!candidate.departmentPercentages[Department]) {
             candidate.departmentPercentages[Department] = 0;
@@ -150,17 +150,13 @@ export default {
           candidate.departmentPercentages[Department] += 1;
         });
 
-        // Calculate percentages for each candidate and fill in missing departments
         for (const position in groupedResults) {
           groupedResults[position].forEach((candidate) => {
-            // Ensure all departments are included
             departments.forEach((department) => {
               if (!candidate.departmentPercentages[department]) {
                 candidate.departmentPercentages[department] = 0;
               }
             });
-
-            // Calculate department percentages based on total position votes
             for (const department in candidate.departmentPercentages) {
               if (positionVoteCounts[position] > 0) {
                 candidate.departmentPercentages[department] =
@@ -176,51 +172,42 @@ export default {
 
         this.results = groupedResults;
       } catch (error) {
-        console.error("Error fetching election results: ", error);
+        console.error("Error fetching election results:", error);
       }
     },
 
-    // Method to display the winners after submitting votes
     async displayWinners() {
       const winners = {};
-
-      // Calculate winners
       for (const position in this.results) {
         const candidates = this.results[position];
-        const maxVotes = Math.max(...candidates.map(candidate => candidate.totalVotes));
-
-        // Filter candidates with the maximum votes (in case of a tie)
-        const tiedCandidates = candidates.filter(candidate => candidate.totalVotes === maxVotes);
+        const maxVotes = Math.max(...candidates.map((candidate) => candidate.totalVotes));
+        const tiedCandidates = candidates.filter(
+          (candidate) => candidate.totalVotes === maxVotes
+        );
 
         if (tiedCandidates.length > 1) {
           winners[position] = {
-            status: 'Tied',
-            candidates: tiedCandidates.map(candidate => candidate.name).join(', '),
+            status: "Tied",
+            candidates: tiedCandidates.map((candidate) => candidate.name).join(", "),
           };
         } else {
           winners[position] = {
-            status: 'Winner',
-            candidates: tiedCandidates[0].name,  // Display the winner's name
+            status: "Winner",
+            candidates: tiedCandidates[0].name,
           };
         }
       }
 
-      // Update the winners data
       this.winners = winners;
-
-      // Display the winners or ties
       alert(this.formatWinnersMessage(winners));
-
-      // You can also choose to log winners to the console if needed
       console.log("Winners:", this.winners);
     },
 
-    // Helper method to format the winner/tied message
     formatWinnersMessage(winners) {
-      let message = '';
+      let message = "";
       for (const position in winners) {
         const winner = winners[position];
-        if (winner.status === 'Tied') {
+        if (winner.status === "Tied") {
           message += `${position}: Tied - ${winner.candidates}\n`;
         } else {
           message += `${position}: Winner - ${winner.candidates}\n`;
@@ -229,18 +216,23 @@ export default {
       return message;
     },
 
-    // Method to print the results as PDF (trigger the print dialog)
     printAsPDF() {
-      window.print();  // This will trigger the print dialog of the browser
-    }
-  }
+      window.print();
+    },
+  },
 };
 </script>
 
-
-
 <style scoped>
-/* Submit Votes Button */
+.candidate-photo {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
 .submit-votes {
   margin-top: 20px;
   padding: 10px 20px;
@@ -319,6 +311,7 @@ export default {
 .results-table th,
 .results-table td {
   border: 1px solid #ddd;
+  font-weight: bold;
   text-align: center;
   padding: 10px;
 }
