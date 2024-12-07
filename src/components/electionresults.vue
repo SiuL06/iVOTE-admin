@@ -13,19 +13,33 @@
     <img src="@/assets/ivotelogo.png" alt="Logo" class="logo" />
     <h1 class="header">COMMISSION ON STUDENT ELECTIONS</h1>
 
+    <!-- Real-time Voter Count Display -->
+    <div class="voter-count">
+      Voters: {{ totalVoted }} / {{ totalVoters }}
+    </div>
+
+    <!-- Filter by Position -->
+    <div class="filter-container">
+      <label for="position-filter">Filter by Position:</label>
+      <select id="position-filter" v-model="selectedPosition" class="position-filter">
+        <option value="">All Positions</option>
+        <option v-for="position in orderedPositions" :key="position" :value="position">
+          {{ position }}
+        </option>
+      </select>
+    </div>
+
     <button class="btn submit-votes" @click="displayWinners">Display Results</button>
     <button class="btn print-pdf" @click="printAsPDF">Print as PDF</button>
 
     <h2 class="header results-title">Election Results</h2>
 
     <div class="results-container">
-      <div v-for="position in orderedPositions" :key="position" class="position-container">
+      <div v-for="position in filteredPositions" :key="position" class="position-container">
         <h3 class="position-title">
           {{ position }}
           <span v-if="winners[position]">
-            -
-            <strong>{{ winners[position].status }}:</strong>
-            {{ winners[position].candidates }}
+            - <strong>{{ winners[position].status }}:</strong> {{ winners[position].candidates }}
           </span>
         </h3>
 
@@ -64,8 +78,9 @@
   </div>
 </template>
 
+
 <script>
-import { getFirestore, collection, getDocs } from "firebase/firestore";
+import { getFirestore, collection, getDocs, onSnapshot } from "firebase/firestore";
 
 export default {
   name: "ElectionResults",
@@ -73,6 +88,9 @@ export default {
     return {
       results: {}, // Stores the election results grouped by positions
       winners: {}, // Stores the winner for each position
+      totalVoters: 0, // Total number of voters (vouchers)
+      totalVoted: 0, // Total number of unique voters who voted
+      selectedPosition: "", // Stores the selected position for filtering
       orderedPositions: [
         "PRESIDENT",
         "VICE-PRESIDENT",
@@ -94,8 +112,19 @@ export default {
       ],
     };
   },
+  computed: {
+    filteredPositions() {
+      if (!this.selectedPosition) {
+        return this.orderedPositions;
+      }
+      return this.orderedPositions.filter(
+        (position) => position === this.selectedPosition
+      );
+    },
+  },
   async created() {
     await this.fetchResults();
+    this.fetchVoterCount(); // Fetch total voters and unique voters who voted
   },
   methods: {
     async fetchResults() {
@@ -112,27 +141,31 @@ export default {
         });
 
         const groupedResults = {};
-        const departments = [
+        const departmentVoteCounts = {}; // Tracks total votes cast per department per position
+        const allDepartments = [
           "AAA", "BACC", "BATAS", "BHS-PHS", "CDW", "CHARMS", "CRCYC", "CREATE",
           "ICPEP", "INA", "JPIA", "JPPhA", "LEAD", "LTSP", "MCSA", "NSC", "PICE",
           "PIIE", "PsychSoc", "SSITE", "VE", "UASAO",
         ];
-        const positionVoteCounts = {};
 
+        // Group votes by position and candidate
         votesSnapshot.forEach((doc) => {
           const vote = doc.data();
           const { Candidate, Department, Position } = vote;
 
           if (!groupedResults[Position]) {
             groupedResults[Position] = [];
-            positionVoteCounts[Position] = 0;
+            departmentVoteCounts[Position] = {};
           }
 
-          positionVoteCounts[Position] += 1;
+          // Increment vote count for the department in the specific position
+          if (!departmentVoteCounts[Position][Department]) {
+            departmentVoteCounts[Position][Department] = 0;
+          }
+          departmentVoteCounts[Position][Department] += 1;
 
-          let candidate = groupedResults[Position].find(
-            (c) => c.name === Candidate
-          );
+          // Add candidate if not already in groupedResults
+          let candidate = groupedResults[Position].find((c) => c.name === Candidate);
           if (!candidate) {
             candidate = {
               name: Candidate,
@@ -143,6 +176,7 @@ export default {
             groupedResults[Position].push(candidate);
           }
 
+          // Increment candidate's vote count and department votes
           candidate.totalVotes += 1;
           if (!candidate.departmentPercentages[Department]) {
             candidate.departmentPercentages[Department] = 0;
@@ -150,22 +184,22 @@ export default {
           candidate.departmentPercentages[Department] += 1;
         });
 
+        // Ensure all departments are present for each candidate
         for (const position in groupedResults) {
           groupedResults[position].forEach((candidate) => {
-            departments.forEach((department) => {
+            allDepartments.forEach((department) => {
               if (!candidate.departmentPercentages[department]) {
                 candidate.departmentPercentages[department] = 0;
               }
             });
+
+            // Calculate percentages
             for (const department in candidate.departmentPercentages) {
-              if (positionVoteCounts[position] > 0) {
-                candidate.departmentPercentages[department] =
-                  (candidate.departmentPercentages[department] /
-                    positionVoteCounts[position]) *
-                  100;
-              } else {
-                candidate.departmentPercentages[department] = 0;
-              }
+              const totalVotesInDepartment = departmentVoteCounts[position]?.[department] || 0;
+              candidate.departmentPercentages[department] =
+                totalVotesInDepartment > 0
+                  ? (candidate.departmentPercentages[department] / totalVotesInDepartment) * 100
+                  : 0;
             }
           });
         }
@@ -174,6 +208,31 @@ export default {
       } catch (error) {
         console.error("Error fetching election results:", error);
       }
+    },
+
+    fetchVoterCount() {
+      const db = getFirestore();
+      const votersCollection = collection(db, "users");
+      const votesCollection = collection(db, "votes");
+
+      // Fetch the total number of voters (vouchers) in the `users` collection
+      onSnapshot(votersCollection, (snapshot) => {
+        this.totalVoters = snapshot.size; // Total number of vouchers
+      });
+
+      // Fetch the total number of unique voted vouchers in the `votes` collection
+      onSnapshot(votesCollection, (snapshot) => {
+        const uniqueVouchers = new Set(); // Track unique voter IDs
+
+        snapshot.forEach((doc) => {
+          const voteData = doc.data();
+          if (voteData.voucher) {
+            uniqueVouchers.add(voteData.voucher); // Add voucher ID to the set
+          }
+        });
+
+        this.totalVoted = uniqueVouchers.size; // Count of unique vouchers that have voted
+      });
     },
 
     async displayWinners() {
@@ -200,7 +259,6 @@ export default {
 
       this.winners = winners;
       alert(this.formatWinnersMessage(winners));
-      console.log("Winners:", this.winners);
     },
 
     formatWinnersMessage(winners) {
@@ -223,7 +281,16 @@ export default {
 };
 </script>
 
+
+
 <style scoped>
+/* Add styles here */
+.voter-count {
+  font-size: 18px;
+  margin: 10px 0;
+  text-align: center;
+  color: white;
+}
 .candidate-photo {
   width: 100px;
   height: 100px;

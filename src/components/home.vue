@@ -58,6 +58,12 @@
           >
             Remove Candidate
           </button>
+          <button
+            class="btn details-candidate"
+            @click="openDetailsModal(nominee)"
+          >
+            Details
+          </button>
         </div>
       </div>
     </div>
@@ -82,13 +88,44 @@
       </div>
     </div>
 
+    <!-- Details Modal -->
+    <div v-if="showDetailsModal" class="modal-overlay">
+      <div class="modal">
+        <h3>Edit Candidate Details</h3>
+        <label for="details">Details:</label>
+        <textarea
+          id="details"
+          v-model="candidateDetails"
+          placeholder="Enter candidate details"
+          rows="5"
+          style="width: 100%; margin-bottom: 10px;"
+        ></textarea>
+        <button class="btn save-details" @click="saveCandidateDetails">
+          Save
+        </button>
+        <button class="btn close-modal" @click="closeDetailsModal">
+          Close
+        </button>
+      </div>
+    </div>
+
     <p class="year">2024</p>
     <p class="footer">Group 7 (iVOTE)</p>
   </div>
 </template>
 
 <script>
-import { getFirestore, collection, getDocs, addDoc, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  addDoc,
+  query,
+  where,
+  doc,
+  updateDoc,
+  deleteDoc,
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 export default {
@@ -97,30 +134,39 @@ export default {
     return {
       nominees: [],
       showPositionModal: false,
+      showDetailsModal: false,
+      currentNominee: null, // Holds the current nominee for editing details
+      candidateDetails: "", // Holds the candidate details
       validPositions: [
-        "PRESIDENT", "VICE-PRESIDENT", "SECRETARY", "TREASURER", "AUDITOR", "BUSINESS MANAGER",
-        "PUBLIC INFORMATION OFFICER", "PUBLIC RELATIONS OFFICER", "CREATIVE DIRECTOR",
-        "EXECUTIVE ASSISTANT TO THE PRESIDENT", "ASSISTANT SECRETARY", "ASSISTANT TREASURER",
-        "ASSISTANT AUDITOR", "ASSISTANT BUSINESS MANAGER", "ASSISTANT CREATIVE DIRECTOR",
-        "CHIEF OF STAFF", "EXECUTIVE STAFF"
+        "PRESIDENT",
+        "VICE-PRESIDENT",
+        "SECRETARY",
+        "TREASURER",
+        "AUDITOR",
+        "BUSINESS MANAGER",
+        "PUBLIC INFORMATION OFFICER",
+        "PUBLIC RELATIONS OFFICER",
+        "CREATIVE DIRECTOR",
+        "EXECUTIVE ASSISTANT TO THE PRESIDENT",
+        "ASSISTANT SECRETARY",
+        "ASSISTANT TREASURER",
+        "ASSISTANT AUDITOR",
+        "ASSISTANT BUSINESS MANAGER",
+        "ASSISTANT CREATIVE DIRECTOR",
+        "CHIEF OF STAFF",
+        "EXECUTIVE STAFF",
       ],
-      isSubmitting: false,
-      userDepartment: "", // Will hold the department of the logged-in user
-      userVoucher: "", // Will hold the voucher of the logged-in user
     };
   },
   computed: {
-    // Ensure that positions are grouped and sorted
     sortedGroupedNominees() {
       const grouped = this.groupedNominees;
       const sorted = {};
-
-      this.validPositions.forEach(position => {
+      this.validPositions.forEach((position) => {
         if (grouped[position]) {
           sorted[position] = grouped[position];
         }
       });
-
       return sorted;
     },
     groupedNominees() {
@@ -133,100 +179,37 @@ export default {
     },
   },
   methods: {
+    openDetailsModal(nominee) {
+      this.currentNominee = nominee;
+      this.candidateDetails = nominee.details || ""; // Load existing details
+      this.showDetailsModal = true; // Show details modal
+    },
+    closeDetailsModal() {
+      this.showDetailsModal = false;
+      this.currentNominee = null;
+      this.candidateDetails = ""; // Reset details
+    },
+    async saveCandidateDetails() {
+      if (!this.currentNominee) return;
+
+      const db = getFirestore();
+      const nomineeRef = doc(db, "nominees", this.currentNominee.id);
+
+      try {
+        await updateDoc(nomineeRef, { details: this.candidateDetails });
+        this.currentNominee.details = this.candidateDetails;
+        alert("Candidate details updated successfully!");
+      } catch (error) {
+        console.error("Error updating candidate details:", error);
+      } finally {
+        this.closeDetailsModal();
+      }
+    },
     openPositionSelectionModal() {
       this.showPositionModal = true; // Open modal
     },
     closePositionSelectionModal() {
       this.showPositionModal = false; // Close modal
-    },
-    // Fetch the logged-in user's department and voucher from Firestore
-    async fetchUserDetails() {
-      const db = getFirestore();
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (user) {
-        const q = query(collection(db, "users"), where("email", "==", user.email));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((doc) => {
-          this.userDepartment = doc.data().Department; // Fetch the department of the logged-in user
-          this.userVoucher = doc.data().Voucher; // Fetch the voucher of the logged-in user
-        });
-      }
-    },
-    async submitVotes() {
-  if (this.nominees.length === 0) {
-    alert("No nominees to submit votes for.");
-    return;
-  }
-
-  this.isSubmitting = true;
-
-  try {
-    const db = getFirestore();
-    const resultsCollection = collection(db, "electionresults");
-
-    // Fetch votes to get the department and voucher of the voter
-    const votesQuery = query(collection(db, "votes"));
-    const votesSnapshot = await getDocs(votesQuery);
-
-    // Create a map to keep track of votes per nominee
-    const nomineeVoteMap = this.nominees.reduce((acc, nominee) => {
-      acc[nominee.name] = {
-        votes: 0,
-        departmentsVoted: new Set(),
-        vouchersVoted: new Set(),
-      };
-      return acc;
-    }, {});
-
-    // Process the votes to count the total votes for each nominee and record the departments and vouchers
-    votesSnapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      const nomineeName = data.Candidate;
-      const department = data.Department;
-      const voucher = data.Voucher;
-
-      // Check if the nominee exists in the list
-      if (nomineeVoteMap[nomineeName]) {
-        // Increment the vote count for the nominee
-        nomineeVoteMap[nomineeName].votes += 1;
-        // Record the department and voucher
-        nomineeVoteMap[nomineeName].departmentsVoted.add(department);
-        nomineeVoteMap[nomineeName].vouchersVoted.add(voucher);
-      }
-    });
-
-    // Prepare the data to be saved in Firestore
-    const votes = Object.keys(nomineeVoteMap).map((nomineeName) => {
-      const nomineeData = nomineeVoteMap[nomineeName];
-      return {
-        name: nomineeName,
-        position: this.nominees.find(nominee => nominee.name === nomineeName).position,
-        votes: nomineeData.votes,
-        departmentsVoted: Array.from(nomineeData.departmentsVoted).join(", "),  // Convert Set to comma-separated string
-        vouchersVoted: Array.from(nomineeData.vouchersVoted).join(", "),  // Convert Set to comma-separated string
-        timestamp: new Date(),
-      };
-    });
-
-    // Save each vote to Firestore
-    const savePromises = votes.map((vote) => addDoc(resultsCollection, vote));
-    await Promise.all(savePromises);
-
-    alert("Votes have been successfully counted and saved to election results!");
-    console.log("Election results saved:", votes);
-
-    // After saving, fetch the election results and update the results page
-    this.$router.push("/electionresults");  // Redirect to election results page
-  } catch (error) {
-    console.error("Error saving election results:", error);
-    alert("An error occurred while saving election results. Please try again.");
-  } finally {
-    this.isSubmitting = false;
-  }
-
-
     },
     async fetchNominees() {
       const db = getFirestore();
@@ -244,14 +227,18 @@ export default {
       const name = prompt("Enter nominee's name:");
       if (!name) return;
 
+      const db = getFirestore();
+      const auth = getAuth();
+      const user = auth.currentUser;
+
       const nominee = {
         name,
         position,
+        addedBy: user ? user.email : "Anonymous",
         score: 0,
         photo: null,
       };
 
-      const db = getFirestore();
       try {
         const docRef = await addDoc(collection(db, "nominees"), nominee);
         this.nominees.push({ ...nominee, id: docRef.id });
@@ -262,44 +249,44 @@ export default {
         this.closePositionSelectionModal();
       }
     },
-
+    async queryNomineesByPosition(position) {
+      const db = getFirestore();
+      const q = query(
+        collection(db, "nominees"),
+        where("position", "==", position)
+      );
+      try {
+        const querySnapshot = await getDocs(q);
+        console.log(`Nominees for ${position}:`, querySnapshot.docs.map(doc => doc.data()));
+      } catch (error) {
+        console.error("Error querying nominees by position:", error);
+      }
+    },
     async addPhoto(nomineeId) {
       const nomineeIndex = this.nominees.findIndex((n) => n.id === nomineeId);
-      if (nomineeIndex === -1) {
-        console.error('Nominee not found');
-        return;
-      }
-
+      if (nomineeIndex === -1) return;
       const photoFile = await this.uploadPhoto();
       if (photoFile) {
         this.nominees[nomineeIndex].photo = photoFile;
-
-        // Update Firestore with the photo URL
         const db = getFirestore();
-        const nomineeRef = doc(db, 'nominees', nomineeId);
+        const nomineeRef = doc(db, "nominees", nomineeId);
         try {
           await updateDoc(nomineeRef, { photo: photoFile });
-          console.log('Photo updated successfully in Firestore.');
         } catch (error) {
-          console.error('Error updating photo in Firestore:', error);
+          console.error("Error updating photo:", error);
         }
-      } else {
-        console.warn('Photo upload failed or was canceled');
       }
     },
     async uploadPhoto() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
       return new Promise((resolve) => {
-        input.onchange = async (e) => {
+        input.onchange = (e) => {
           const file = e.target.files[0];
           if (file) {
             const reader = new FileReader();
-            reader.onload = () => {
-              resolve(reader.result); // Return base64 data URL
-            };
+            reader.onload = () => resolve(reader.result);
             reader.readAsDataURL(file);
           } else {
             resolve(null);
@@ -311,32 +298,23 @@ export default {
     async removeCandidate(nomineeId) {
       const db = getFirestore();
       try {
-        // Remove nominee from Firestore
-        await deleteDoc(doc(db, 'nominees', nomineeId));
-
-        // Remove nominee from local state
-        this.nominees = this.nominees.filter((nominee) => nominee.id !== nomineeId);
-        alert('Nominee removed successfully!');
+        await deleteDoc(doc(db, "nominees", nomineeId));
+        this.nominees = this.nominees.filter((n) => n.id !== nomineeId);
       } catch (error) {
-        console.error('Error removing nominee:', error);
+        console.error("Error removing nominee:", error);
       }
     },
     async resetAndRemoveNominees() {
       const db = getFirestore();
       try {
-        // Fetch all nominees and delete them from Firestore
-        const snapshot = await getDocs(collection(db, 'nominees'));
+        const snapshot = await getDocs(collection(db, "nominees"));
         const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
         await Promise.all(deletePromises);
-
-        // Clear the local state
         this.nominees = [];
-        alert('All nominees have been removed.');
       } catch (error) {
-        console.error('Error removing nominees:', error);
+        console.error("Error resetting nominees:", error);
       }
     },
-
     logout() {
       localStorage.removeItem("authToken");
       this.$router.push("/");
@@ -344,15 +322,30 @@ export default {
   },
   mounted() {
     this.fetchNominees();
-    this.fetchUserDetails(); // Fetch user department and voucher details on mount
+    this.queryNomineesByPosition("PRESIDENT"); // Example query usage
   },
 };
 </script>
 
 
 
-
 <style scoped>
+.details-candidate {
+  background-color: #17a2b8;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-top: 10px;
+  cursor: pointer;
+  width: 90%; /* Ensure the button fits within the card */
+  text-align: center; /* Center-align the button text */
+  box-sizing: border-box; /* Prevent overflow due to padding */
+}
+
+.details-candidate:hover {
+  background-color: #138496;
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -415,8 +408,10 @@ export default {
   color: #fff;
   padding: 5px 10px;
   border-radius: 5px;
-  margin-top: 10px;
+  margin-bottom: 10px; /* Add space between buttons */
   cursor: pointer;
+  width: 90%; /* Match the width of the Details button */
+  text-align: center; /* Center-align the button text */
 }
 
 .container {
@@ -457,7 +452,7 @@ export default {
 
 .id-card {
   width: 200px;
-  height: 300px;
+  height: auto; /* Allow dynamic height to fit all content */
   background-color: #ffffff;
   color: #000000;
   border: 2px solid #ddd;
@@ -468,6 +463,7 @@ export default {
   justify-content: space-between;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+  padding: 10px; /* Add padding for better content spacing */
   transition: transform 0.3s;
 }
 
@@ -500,7 +496,7 @@ export default {
 .nominee-title {
   font-size: 18px;
   font-weight: bold;
-  margin-bottom: 5px;
+  margin-bottom: 10px; /* Add space below the title */
 }
 
 .votes-label {
@@ -611,3 +607,4 @@ export default {
   margin-bottom: 20px;
 }
 </style>
+
