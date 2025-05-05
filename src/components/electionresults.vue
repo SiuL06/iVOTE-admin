@@ -284,7 +284,6 @@ export default {
 
 
 <style scoped>
-/* Add styles here */
 .voter-count {
   font-size: 18px;
   margin: 10px 0;
@@ -314,7 +313,7 @@ export default {
   background-color: #0056b3;
 }
 
-/* Print as PDF Button */
+
 .print-pdf {
   margin-top: 20px;
   padding: 10px 20px;
@@ -329,7 +328,7 @@ export default {
   background-color: #218838;
 }
 
-/* General Container Styles */
+
 .container {
   width: 100%;
   min-height: 100vh;
@@ -342,7 +341,7 @@ export default {
   padding-bottom: 20px;
 }
 
-/* Results Container */
+
 .results-container {
   width: 80%;
   margin: 20px auto;
@@ -353,12 +352,12 @@ export default {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
-/* Position Container */
+
 .position-container {
   margin-bottom: 20px;
 }
 
-/* Position Title Styling */
+
 .position-title {
   font-size: 22px;
   font-weight: bold;
@@ -368,7 +367,7 @@ export default {
   text-transform: uppercase;
 }
 
-/* Table Styling */
+
 .results-table {
   width: 100%;
   border-collapse: collapse;
@@ -396,7 +395,7 @@ export default {
   background-color: #ddd;
 }
 
-/* Department Percentages Table */
+
 .department-percentages-inner-table {
   width: 100%;
   border-collapse: collapse;
@@ -413,7 +412,7 @@ export default {
   background-color: #f9f9f9;
 }
 
-/* Navbar Styling */
+
 .navbar {
   display: flex;
   justify-content: space-between;
@@ -428,7 +427,7 @@ export default {
   z-index: 10;
 }
 
-/* Navbar Links */
+
 .navbar nav ul {
   list-style: none;
   display: flex;
@@ -443,7 +442,7 @@ export default {
   opacity: 0.3;
 }
 
-/* Button Styling */
+
 .btn {
   background-color: none;
   font-size: 20px;
@@ -456,14 +455,14 @@ export default {
   cursor: pointer;
 }
 
-/* Logo Styling */
+
 .logo {
   width: 200px;
   height: 100px;
   margin-top: 20px;
 }
 
-/* Header Styling */
+
 .header {
   margin: 10px 0;
   font-size: 24px;
@@ -471,7 +470,7 @@ export default {
   text-align: center;
 }
 
-/* Footer Styling */
+
 .year {
   margin-top: auto;
   font-size: 16px;
